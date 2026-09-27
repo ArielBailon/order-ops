@@ -1,13 +1,47 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider            = "prisma-client"
+  output              = "../libs/prisma/src/generated"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum CustomerTier {
+  standard
+  premium
+}
+
+enum OrderStatus {
+  pending
+  processing
+  shipped
+  delivered
+  cancelled
+}
+
+model Customer {
+  id           String       @id
+  name         String
+  email        String       @unique
+  tier         CustomerTier @default(standard)
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  orders       Order[]
+}
+
+model Order {
+  id          String      @id
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  items       Json
+  total       Decimal     @db.Decimal(10, 2)
+  status      OrderStatus
+  createdAt   DateTime
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+
+  @@index([customerId])
 }

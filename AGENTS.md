@@ -305,21 +305,29 @@ npm (lockfile: `package-lock.json`). Node's bundled npm 10.9.3 crashes during
 install on this project (arborist `edgesOut` bug); use `npx -y npm@11 install`
 until the global npm is updated.
 
-- Database: `docker compose up -d` (Postgres 16 + pgvector on `localhost:5432`;
-  copy `.env.example` to `.env` for `DATABASE_URL`)
-- Dev server (gateway + agent): `npm run start:dev`
-- Dev server (other apps): `npm run start:dev -- orders-service`,
-  `npm run start:dev -- customers-service`
+- Env: copy `.env.example` to `.env` and set `JWT_SECRET` (32+ chars); every
+  app validates its env at startup
+- Database: `docker compose up -d` (Postgres 16 + pgvector on `localhost:5432`)
+- Migrate + seed: `npx prisma migrate dev`, `npx prisma generate`, then `npx prisma db seed`
+  (idempotent). Seed customers `ana@example.com`, `ben@example.com`,
+  `cora@example.com` share the dev password `orderops-dev-password`
+- Dev servers: `npm run start:dev` (gateway, :3000),
+  `npm run start:dev -- orders-service` (:3001),
+  `npm run start:dev -- customers-service` (:3002)
+- Login: `POST http://localhost:3000/auth/login` with `{ "email", "password" }`;
+  send the returned `accessToken` as `Authorization: Bearer <token>` to
+  `GET :3001/orders`, `GET :3001/orders/:id`, `GET :3002/customers/me`
 - Build: `npx nest build <app>` (`npm run build` builds only `orderops-agent`)
 - Production server (gateway): `npm run build && npm run start:prod`
-- Lint: `npm run lint` (oxlint)
+- Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack
   build only transpiles, so it does not catch type errors)
 - Test: `npm test` (Vitest, `**/*.spec.ts`)
 - E2E test: `npm run test:e2e` (Vitest, `**/*.e2e-spec.ts`)
-- Prisma: `npx prisma migrate dev`, `npx prisma generate` (config in
-  `prisma7.config.ts`, client generated to `generated/prisma`)
+- Prisma: `npx prisma generate` after schema changes (config in
+  `prisma7.config.ts`, client generated to `libs/prisma/src/generated`, imported
+  as `@app/prisma`)
 
 No combined Verify command yet; `/ci` owns that.
 

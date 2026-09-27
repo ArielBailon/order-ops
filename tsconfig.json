@@ -20,7 +20,21 @@
     "types": [
       "vitest/globals",
       "node"
-    ]
+    ],
+    "paths": {
+      "@app/auth": [
+        "./libs/auth/src/index.ts"
+      ],
+      "@app/auth/*": [
+        "./libs/auth/src/*"
+      ],
+      "@app/prisma": [
+        "./libs/prisma/src/index.ts"
+      ],
+      "@app/prisma/*": [
+        "./libs/prisma/src/*"
+      ]
+    }
   },
   "files": [],
   "references": [

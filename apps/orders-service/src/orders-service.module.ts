@@ -1,10 +1,9 @@
 import { Module } from '@nestjs/common';
-import { OrdersServiceController } from './orders-service.controller.js';
-import { OrdersServiceService } from './orders-service.service.js';
+import { ConfigModule } from '@nestjs/config';
+import { validateEnv } from './env.js';
+import { OrdersModule } from './orders/orders.module.js';
 
 @Module({
-  imports: [],
-  controllers: [OrdersServiceController],
-  providers: [OrdersServiceService],
+  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), OrdersModule],
 })
 export class OrdersServiceModule {}

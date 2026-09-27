@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
-import { CustomersServiceController } from './customers-service.controller.js';
-import { CustomersServiceService } from './customers-service.service.js';
+import { ConfigModule } from '@nestjs/config';
+import { CustomersModule } from './customers/customers.module.js';
+import { validateEnv } from './env.js';
 
 @Module({
-  imports: [],
-  controllers: [CustomersServiceController],
-  providers: [CustomersServiceService],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    CustomersModule,
+  ],
 })
 export class CustomersServiceModule {}

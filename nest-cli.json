@@ -10,6 +10,15 @@
   "monorepo": true,
   "root": "apps/orderops-agent",
   "projects": {
+    "auth": {
+      "type": "library",
+      "root": "libs/auth",
+      "entryFile": "index",
+      "sourceRoot": "libs/auth/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/auth/tsconfig.lib.json"
+      }
+    },
     "customers-service": {
       "type": "application",
       "root": "apps/customers-service",
@@ -35,6 +44,15 @@
       "sourceRoot": "apps/orders-service/src",
       "compilerOptions": {
         "tsConfigPath": "apps/orders-service/tsconfig.app.json"
+      }
+    },
+    "prisma": {
+      "type": "library",
+      "root": "libs/prisma",
+      "entryFile": "index",
+      "sourceRoot": "libs/prisma/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/prisma/tsconfig.lib.json"
       }
     }
   }
