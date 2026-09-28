@@ -311,7 +311,9 @@ until the global npm is updated.
 - Migrate + seed: `npx prisma migrate dev`, `npx prisma generate`, then `npx prisma db seed`
   (idempotent). Seed customers `ana@example.com`, `ben@example.com`,
   `cora@example.com` share the dev password `orderops-dev-password`
-- Dev servers: `npm run start:dev` (gateway, :3000),
+- Dev servers: `npm run start:all` starts all three in watch mode with
+  prefixed output (Ctrl+C stops them all), or one at a time:
+  `npm run start:dev` (gateway, :3000),
   `npm run start:dev -- orders-service` (:3001),
   `npm run start:dev -- customers-service` (:3002)
 - Login: `POST http://localhost:3000/auth/login` with `{ "email", "password" }`;
