@@ -38,3 +38,19 @@
 **Why it matters:** The spec labels `POST /auth/verify-credentials` "none (internal, local-only mock)", and login rate limiting is out of scope. `app.listen(port)` binds all interfaces, so on a dev machine the endpoint (a full credential oracle with no rate limit, bypassing the gateway) is reachable from the local network, not only localhost. Missing validation: whether "local-only" in the spec was meant as a network-binding requirement or only describes a dev mock.
 **Suggested fix:** If local-only means loopback, bind the services with `app.listen(port, '127.0.0.1')` (or a `HOST` env value); otherwise mark this finding invalid with that decision. No current requirement is lost either way.
 **Resolution:**
+
+### F-05 [P3] open - tool_call event forwards unchecked model tool names
+
+**File:** apps/orderops-agent/src/chat/chat.service.ts:112
+**Found:** 2026-09-28 by /audit independent (scope: current; lens: quality, tests)
+**Why it matters:** The locked SSE contract says `tool_call.data.name` is `list_orders` or `get_order`, but the loop casts `call.name as ToolName` and emits whatever name the model produced before `runTool` falls back to `unknown_tool` (line 129). A hallucinated tool name would reach clients as a contract-violating event that items 2-7 build on. The `unknown_tool` branch also has no test.
+**Suggested fix:** Emit `tool_call` only for names of the bound tools (or look the tool up first and skip the event for unknown names while still returning `unknown_tool` to the model), and add one unit test for an unknown tool name. No current requirement is lost.
+**Resolution:**
+
+### F-06 [P3] open - Client-disconnect abort is untested and does not reach tool HTTP calls
+
+**File:** apps/orderops-agent/src/chat/chat.controller.ts:32
+**Found:** 2026-09-28 by /audit independent (scope: current; lens: tests, performance)
+**Why it matters:** Step 3 requires aborting the agent via `AbortController` on client disconnect. The signal is passed to model calls, but no unit or e2e test exercises the disconnect path, and `OrdersClient` fetches use only `AbortSignal.timeout(5000)` (orders.client.ts:42), so an in-flight tool call keeps running for up to 5 s after the client leaves. Bounded, so low impact, but the spec'd behavior is unproven.
+**Suggested fix:** Add a service test that aborts the signal mid-loop and asserts no further model turns run; optionally pass the request signal into the tools (`AbortSignal.any([signal, AbortSignal.timeout(...)])`). No current requirement is lost.
+**Resolution:**

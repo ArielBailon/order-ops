@@ -9,10 +9,13 @@ describe('gateway auth (e2e)', () => {
 
   beforeAll(async () => {
     process.env.JWT_SECRET = 'e2e-secret-that-is-at-least-32-chars';
+    process.env.ANTHROPIC_API_KEY = 'e2e-fake-key';
     vi.stubGlobal('fetch', fetchMock);
     // Imported after setting env: ConfigModule validates it when the module loads.
     const { AppModule } = await import('../src/app.module.js');
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
   });
@@ -47,7 +50,10 @@ describe('gateway auth (e2e)', () => {
   });
 
   it('POST /auth/login returns 400 for an invalid body without calling upstream', async () => {
-    await request(app.getHttpServer()).post('/auth/login').send({ email: 'x' }).expect(400);
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: 'x' })
+      .expect(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

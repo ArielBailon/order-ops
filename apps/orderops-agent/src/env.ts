@@ -3,7 +3,9 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   JWT_SECRET: JWT_SECRET_SCHEMA,
+  ANTHROPIC_API_KEY: z.string().min(1),
   CUSTOMERS_SERVICE_URL: z.url().default('http://localhost:3002'),
+  ORDERS_SERVICE_URL: z.url().default('http://localhost:3001'),
   PORT: z.coerce.number().int().positive().default(3000),
 });
 

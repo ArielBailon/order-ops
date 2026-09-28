@@ -1,0 +1,71 @@
+import { z } from 'zod';
+
+export const chatRequestSchema = z.object({
+  message: z.string().trim().min(1).max(2000),
+});
+
+export type ChatRequest = z.infer<typeof chatRequestSchema>;
+
+export const finalAnswerSchema = z.object({
+  answer: z.string().min(1).describe('The reply to show the customer'),
+  orderIds: z
+    .array(z.string())
+    .describe(
+      'Ids of the orders the reply is about, exactly as the tools returned them',
+    ),
+});
+
+export type FinalAnswer = z.infer<typeof finalAnswerSchema>;
+
+export type ToolName = 'list_orders' | 'get_order';
+
+export type ChatErrorCode = 'agent_error' | 'invalid_output';
+
+/** SSE events streamed by POST /chat. `approval_required` is reserved for item 4. */
+export type ChatEvent =
+  | { type: 'token'; data: { text: string } }
+  | {
+      type: 'tool_call';
+      data: { name: ToolName; args: Record<string, unknown> };
+    }
+  | { type: 'final'; data: FinalAnswer }
+  | { type: 'error'; data: { code: ChatErrorCode; message: string } };
+
+export const CHAT_ERROR_MESSAGES: Record<ChatErrorCode, string> = {
+  agent_error: 'The assistant could not answer right now. Please try again.',
+  invalid_output:
+    'The assistant could not produce a valid answer. Please try again.',
+};
+
+export function formatSseEvent({ type, data }: ChatEvent): string {
+  return `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+const money = z.string().regex(/^\d+\.\d{2}$/);
+
+/** Mirrors the orders-service response; parsed at the gateway because it is upstream input. */
+export const orderSchema = z.object({
+  id: z.string(),
+  customerId: z.string(),
+  items: z.array(
+    z.object({
+      sku: z.string(),
+      name: z.string(),
+      quantity: z.number().int().min(1),
+      unitPrice: money,
+    }),
+  ),
+  total: money,
+  status: z.enum([
+    'pending',
+    'processing',
+    'shipped',
+    'delivered',
+    'cancelled',
+  ]),
+  createdAt: z.iso.datetime(),
+  shippedAt: z.iso.datetime().nullable(),
+  deliveredAt: z.iso.datetime().nullable(),
+});
+
+export type Order = z.infer<typeof orderSchema>;
