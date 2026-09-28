@@ -1,12 +1,12 @@
 # OrderOps Agent - Project Overview
 
-<!-- blueprint:source-hash bdd9a9a1164cdd0ba0482c9b0fc17eccc715697e60806ee717b79b5ef47cc6f1 -->
+<!-- blueprint:source-hash be1cafe9964f528f96e0242f860d7a21f89b9feb6e785c95ea69e157a4d03140 -->
 
 > A support and operations agent for a fictional e-commerce store (NestJS + LangChain.js + LangGraph.js), built as a guided, deliberately scoped learning and portfolio project for production agentic patterns.
 
 ## Problem
 
-Agentic systems that hold up in production need more than a prompt and a model call: they must orchestrate tools against real authenticated services, keep multi-turn state, stay in scope, fall back to deterministic flows on failure, work across LLM providers, and be observable and measurable. This project builds those patterns end to end in an e-commerce support domain where actions have consequences (refunds). The patterns are later carried, more maturely, into another project (CodeSage).
+Agentic systems that hold up in production need more than a prompt and a model call: they must orchestrate tools against real authenticated services, keep multi-turn state, stay in scope, fall back to deterministic flows on failure, work across LLM providers, and be observable and measurable. This project builds those patterns end to end in an e-commerce support domain where actions have consequences (refunds).
 
 ## Users
 
