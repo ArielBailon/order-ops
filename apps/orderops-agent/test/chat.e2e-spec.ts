@@ -129,7 +129,7 @@ describe('gateway chat (e2e)', () => {
       },
     ]);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(String(url)).toBe('http://localhost:3001/orders/ord_1001');
+    expect(String(url)).toBe('http://127.0.0.1:3001/orders/ord_1001');
     expect(init.headers).toEqual({ authorization: `Bearer ${token}` });
   });
 

@@ -31,14 +31,6 @@
 **Suggested fix:** Remove the two TODOs, record the one-schema decision, and update the generated client path. Documentation only; no behavior change.
 **Resolution:**
 
-### F-04 [P2] unverified - Unauthenticated credential check listens on all interfaces
-
-**File:** apps/customers-service/src/main.ts:7
-**Found:** 2026-09-27 by /audit independent (scope: current; lens: security)
-**Why it matters:** The spec labels `POST /auth/verify-credentials` "none (internal, local-only mock)", and login rate limiting is out of scope. `app.listen(port)` binds all interfaces, so on a dev machine the endpoint (a full credential oracle with no rate limit, bypassing the gateway) is reachable from the local network, not only localhost. Missing validation: whether "local-only" in the spec was meant as a network-binding requirement or only describes a dev mock.
-**Suggested fix:** If local-only means loopback, bind the services with `app.listen(port, '127.0.0.1')` (or a `HOST` env value); otherwise mark this finding invalid with that decision. No current requirement is lost either way.
-**Resolution:**
-
 ### F-05 [P3] open - tool_call event forwards unchecked model tool names
 
 **File:** apps/orderops-agent/src/chat/chat.service.ts:112
