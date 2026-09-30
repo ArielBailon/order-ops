@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { App } from 'supertest/types.js';
 
 describe('gateway auth (e2e)', () => {
   let app: INestApplication<App>;

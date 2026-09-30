@@ -324,7 +324,8 @@ until the global npm is updated.
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack
-  build only transpiles, so it does not catch type errors)
+  build only transpiles, so it does not catch type errors); spec and e2e files:
+  `npm run typecheck:spec`
 - Test: `npm test` (Vitest, `**/*.spec.ts`)
 - E2E test: `npm run test:e2e` (Vitest, `**/*.e2e-spec.ts`)
 - Prisma: `npx prisma generate` after schema changes (config in

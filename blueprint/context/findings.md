@@ -15,14 +15,6 @@
 **Suggested fix:** Throw small domain errors (for example `InvalidCredentialsError`, `CustomersServiceUnavailableError`) or return a result from the service and map them to 401/503 in `LoginController`; adjust `login.service.spec.ts` accordingly. Nothing is deleted and no current requirement is lost. Alternatively record an explicit standards exception for thin gateway services.
 **Resolution:**
 
-### F-02 [P3] open - Spec and e2e files are never typechecked
-
-**File:** apps/orders-service/tsconfig.app.json:10
-**Found:** 2026-09-27 by /audit independent (scope: current; lens: tests)
-**Why it matters:** Every app and lib tsconfig excludes `test` and `**/*spec.ts`, the root tsconfig has `files: []`, and Vitest does not typecheck, so none of the 9 test files is covered by the documented `tsc` gate. A reviewer-side typecheck of all app and lib files (scratch tsconfig extending the root one) shows the only errors are in the three rewritten e2e files: `import { App } from 'supertest/types'` does not resolve under `nodenext` (TS2307 at apps/customers-service/test/app.e2e-spec.ts:5, apps/orderops-agent/test/app.e2e-spec.ts:4, apps/orders-service/test/app.e2e-spec.ts:5). It runs only because esbuild drops the type-only import. The import was inherited from the scaffold but kept in this delta.
-**Suggested fix:** Change the three imports to `import type { App } from 'supertest/types.js'` (or drop the generic), and add a test typecheck (for example a `tsconfig.spec.json` including spec files, run alongside the per-app `tsc` commands in AGENTS.md). No current requirement is lost.
-**Resolution:**
-
 ### F-06 [P3] open - Client-disconnect abort is untested and does not reach tool HTTP calls
 
 **File:** apps/orderops-agent/src/chat/chat.controller.ts:32

@@ -16,6 +16,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/apps/orderops-agent/main",
     "lint": "oxlint apps/ libs/",
+    "typecheck:spec": "tsc -p tsconfig.spec.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",

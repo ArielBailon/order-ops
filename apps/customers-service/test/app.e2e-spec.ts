@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import type { App } from 'supertest/types.js';
 import { hashPassword } from '@app/auth';
 import { PrismaService } from '@app/prisma';
 
