@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { ACCESS_TOKEN_TTL_SECONDS, type Credentials } from '@app/auth';
@@ -13,6 +8,20 @@ export interface LoginResponse {
   accessToken: string;
   tokenType: 'Bearer';
   expiresIn: number;
+}
+
+export class InvalidCredentialsError extends Error {
+  constructor() {
+    super('Invalid credentials');
+    this.name = 'InvalidCredentialsError';
+  }
+}
+
+export class CustomersServiceUnavailableError extends Error {
+  constructor() {
+    super('customers-service unavailable');
+    this.name = 'CustomersServiceUnavailableError';
+  }
 }
 
 const verifiedSchema = z.object({ customerId: z.string().min(1) });
@@ -50,14 +59,14 @@ export class LoginService {
       });
     } catch (error) {
       this.logger.warn(`customers-service unreachable: ${(error as Error).name}`);
-      throw new ServiceUnavailableException();
+      throw new CustomersServiceUnavailableError();
     }
 
-    if (response.status === 401) throw new UnauthorizedException('Invalid credentials');
+    if (response.status === 401) throw new InvalidCredentialsError();
     const body = response.ok ? verifiedSchema.safeParse(await response.json().catch(() => null)) : null;
     if (!body?.success) {
       this.logger.warn(`customers-service answered ${response.status} to verify-credentials`);
-      throw new ServiceUnavailableException();
+      throw new CustomersServiceUnavailableError();
     }
     return body.data.customerId;
   }

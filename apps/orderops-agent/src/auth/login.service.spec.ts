@@ -1,7 +1,10 @@
-import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { LoginService } from './login.service.js';
+import {
+  CustomersServiceUnavailableError,
+  InvalidCredentialsError,
+  LoginService,
+} from './login.service.js';
 
 const SECRET = 'unit-secret-that-is-at-least-32-chars';
 const credentials = { email: 'ana@example.com', password: 'pw' };
@@ -33,22 +36,18 @@ describe('LoginService', () => {
     expect(JSON.parse(init.body)).toEqual(credentials);
   });
 
-  it('maps rejected credentials to 401', async () => {
+  it('throws InvalidCredentialsError for rejected credentials', async () => {
     fetchMock.mockResolvedValue(Response.json({ message: 'Invalid credentials' }, { status: 401 }));
-    await expect(service.login(credentials)).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(service.login(credentials)).rejects.toBeInstanceOf(InvalidCredentialsError);
   });
 
   it.each([
     ['unreachable', () => fetchMock.mockRejectedValue(new TypeError('fetch failed'))],
     ['5xx', () => fetchMock.mockResolvedValue(new Response('boom', { status: 500 }))],
     ['malformed body', () => fetchMock.mockResolvedValue(Response.json({ id: 1 }))],
-  ])('maps an %s customers-service to 503', async (_label, arrange) => {
+  ])('throws CustomersServiceUnavailableError for an %s customers-service', async (_label, arrange) => {
     arrange();
     const error = await service.login(credentials).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(ServiceUnavailableException);
-    expect((error as ServiceUnavailableException).getResponse()).toEqual({
-      statusCode: 503,
-      message: 'Service Unavailable',
-    });
+    expect(error).toBeInstanceOf(CustomersServiceUnavailableError);
   });
 });

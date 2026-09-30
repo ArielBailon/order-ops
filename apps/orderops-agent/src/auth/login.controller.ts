@@ -1,6 +1,18 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  Post,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { type Credentials, credentialsSchema, ZodValidationPipe } from '@app/auth';
-import { type LoginResponse, LoginService } from './login.service.js';
+import {
+  CustomersServiceUnavailableError,
+  InvalidCredentialsError,
+  type LoginResponse,
+  LoginService,
+} from './login.service.js';
 
 @Controller('auth')
 export class LoginController {
@@ -8,9 +20,17 @@ export class LoginController {
 
   @Post('login')
   @HttpCode(200)
-  signIn(
+  async signIn(
     @Body(new ZodValidationPipe(credentialsSchema)) credentials: Credentials,
   ): Promise<LoginResponse> {
-    return this.login.login(credentials);
+    try {
+      return await this.login.login(credentials);
+    } catch (error) {
+      if (error instanceof InvalidCredentialsError)
+        throw new UnauthorizedException('Invalid credentials');
+      if (error instanceof CustomersServiceUnavailableError)
+        throw new ServiceUnavailableException();
+      throw error;
+    }
   }
 }
