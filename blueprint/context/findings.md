@@ -23,14 +23,6 @@
 **Suggested fix:** Change the three imports to `import type { App } from 'supertest/types.js'` (or drop the generic), and add a test typecheck (for example a `tsconfig.spec.json` including spec files, run alongside the per-app `tsc` commands in AGENTS.md). No current requirement is lost.
 **Resolution:**
 
-### F-03 [P3] open - Coding standards are stale after this feature
-
-**File:** blueprint/context/coding-standards.md:31
-**Found:** 2026-09-27 by /audit independent (scope: current; lens: quality)
-**Why it matters:** This feature resolved three items the standards still describe as open or state incorrectly: the port TODO (line 31, services now use 3001/3002 via `ConfigService`), the Prisma client output path (line 61 says `generated/prisma`; it is now `libs/prisma/src/generated`, imported as `@app/prisma`), and the per-service schema TODO (line 65, the spec chose one shared database and schema). Agents read this file before changing code and may follow the wrong path.
-**Suggested fix:** Remove the two TODOs, record the one-schema decision, and update the generated client path. Documentation only; no behavior change.
-**Resolution:**
-
 ### F-06 [P3] open - Client-disconnect abort is untested and does not reach tool HTTP calls
 
 **File:** apps/orderops-agent/src/chat/chat.controller.ts:32

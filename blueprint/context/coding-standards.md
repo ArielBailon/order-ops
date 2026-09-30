@@ -28,9 +28,10 @@
   service). Controllers stay thin: parse, delegate, map errors to HTTP.
 - Configuration through `@nestjs/config`; read env in one place, never
   `process.env` scattered through services.
-- > TODO: each app currently defaults to port 3000 (the two services read
-  > lowercase `process.env.port`). Assign distinct ports when the services get
-  > real endpoints.
+- Ports: gateway 3000 (`PORT`), orders-service 3001 (`ORDERS_SERVICE_PORT`),
+  customers-service 3002 (`CUSTOMERS_SERVICE_PORT`). The internal services bind
+  `127.0.0.1`; the gateway reaches them through `ORDERS_SERVICE_URL` and
+  `CUSTOMERS_SERVICE_URL`. Each app validates its env in `src/env.ts`.
 
 ## Agent code (LangChain.js / LangGraph.js)
 
@@ -58,11 +59,11 @@
 ## Database
 
 - PostgreSQL + pgvector via `docker compose`. Prisma for app data; Prisma 7
-  config is `prisma7.config.ts`, generated client output `generated/prisma`.
+  config is `prisma7.config.ts`, generated client output `libs/prisma/src/generated`, imported as `@app/prisma`.
 - Always use `prisma migrate dev` for schema changes (not `db push`).
 - LangGraph checkpoints and vector embeddings use their own tables managed by
   their libraries, not Prisma models.
-- > TODO: whether each mock service gets its own schema or database.
+- All apps share one Postgres database and one Prisma schema (`prisma/schema.prisma`).
 
 ## Error handling
 
