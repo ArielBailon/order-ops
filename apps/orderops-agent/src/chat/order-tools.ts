@@ -12,6 +12,7 @@ export function createOrderTools(
   client: OrdersClient,
   token: string,
   seenOrderIds: Set<string>,
+  signal: AbortSignal,
 ): StructuredToolInterface[] {
   const toToolOutput = <T extends Order | Order[]>(
     result: OrdersResult<T>,
@@ -22,14 +23,14 @@ export function createOrderTools(
   };
 
   return [
-    tool(async () => toToolOutput(await client.listOrders(token)), {
+    tool(async () => toToolOutput(await client.listOrders(token, signal)), {
       name: 'list_orders' satisfies ToolName,
       description: "List the current customer's orders, newest first.",
       schema: z.object({}),
     }),
     tool(
       async ({ orderId }) =>
-        toToolOutput(await client.getOrder(token, orderId)),
+        toToolOutput(await client.getOrder(token, orderId, signal)),
       {
         name: 'get_order' satisfies ToolName,
         description:

@@ -72,13 +72,17 @@ describe('ChatService', () => {
   const orders = { listOrders: vi.fn(), getOrder: vi.fn() };
   const signal = new AbortController().signal;
 
-  const run = async (model: FakeChatModel, message = 'where is my order?') => {
+  const run = async (
+    model: FakeChatModel,
+    message = 'where is my order?',
+    requestSignal = signal,
+  ) => {
     const service = new ChatService(
       model as unknown as BaseChatModel,
       orders as unknown as OrdersClient,
     );
     const events: ChatEvent[] = [];
-    for await (const event of service.reply(message, 'tok', signal))
+    for await (const event of service.reply(message, 'tok', requestSignal))
       events.push(event);
     return events;
   };
@@ -118,7 +122,7 @@ describe('ChatService', () => {
         data: { answer: 'Your kettle has shipped.', orderIds: ['ord_1001'] },
       },
     ]);
-    expect(orders.getOrder).toHaveBeenCalledWith('tok', 'ord_1001');
+    expect(orders.getOrder).toHaveBeenCalledWith('tok', 'ord_1001', signal);
     expect(toolResults(model)).toEqual([JSON.stringify(ORDER_FIXTURE)]);
     expect(model.structuredInputs[0].at(-1)?.content).toContain('final reply');
   });
@@ -166,7 +170,7 @@ describe('ChatService', () => {
 
     const events = await run(model);
 
-    expect(orders.listOrders).toHaveBeenCalledWith('tok');
+    expect(orders.listOrders).toHaveBeenCalledWith('tok', signal);
     expect(orders.getOrder).not.toHaveBeenCalled();
     expect(toolResults(model)).toEqual([
       JSON.stringify([ORDER_FIXTURE]),
@@ -188,6 +192,27 @@ describe('ChatService', () => {
       JSON.stringify({ error: 'unknown_tool' }),
     ]);
     expect(events.at(-1)?.type).toBe('final');
+  });
+
+  it('stops the loop when the client disconnects mid-run', async () => {
+    const abort = new AbortController();
+    orders.listOrders.mockImplementation(async () => {
+      abort.abort();
+      return { ok: true, data: [ORDER_FIXTURE] };
+    });
+    const model = new FakeChatModel([
+      [toolCall('list_orders', {})],
+      [text('never streamed')],
+    ]);
+
+    const events = await run(model, 'where is my order?', abort.signal);
+
+    expect(model.turnInputs).toHaveLength(1);
+    expect(events.filter((e) => e.type === 'token')).toHaveLength(0);
+    expect(events.at(-1)?.type).toBe('error');
+    expect(
+      events.filter((e) => e.type === 'error' || e.type === 'final'),
+    ).toHaveLength(1);
   });
 
   it('stops with agent_error after the turn limit', async () => {

@@ -61,7 +61,7 @@ export class ChatService {
   ): AsyncGenerator<ChatEvent> {
     try {
       const seenOrderIds = new Set<string>();
-      const tools = createOrderTools(this.orders, token, seenOrderIds);
+      const tools = createOrderTools(this.orders, token, seenOrderIds, signal);
       const messages: BaseMessage[] = [
         new SystemMessage(CHAT_SYSTEM_PROMPT),
         new HumanMessage(message),
@@ -96,6 +96,7 @@ export class ChatService {
     const toolModel = this.model.bindTools(tools);
 
     for (let turn = 0; turn < MAX_MODEL_TURNS; turn++) {
+      signal.throwIfAborted();
       let full: AIMessageChunk | undefined;
       for await (const chunk of await toolModel.stream(messages, { signal })) {
         if (chunk.text) yield { type: 'token', data: { text: chunk.text } };
@@ -112,6 +113,7 @@ export class ChatService {
             type: 'tool_call',
             data: { name: call.name as ToolName, args: call.args },
           };
+        signal.throwIfAborted();
         messages.push(await this.runTool(tools, call));
       }
     }

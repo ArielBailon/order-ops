@@ -18,14 +18,22 @@ export class OrdersClient {
     this.ordersServiceUrl = config.getOrThrow<string>('ORDERS_SERVICE_URL');
   }
 
-  listOrders(token: string): Promise<OrdersResult<Order[]>> {
-    return this.get('/orders', token, z.array(orderSchema));
+  listOrders(
+    token: string,
+    signal: AbortSignal,
+  ): Promise<OrdersResult<Order[]>> {
+    return this.get('/orders', token, signal, z.array(orderSchema));
   }
 
-  getOrder(token: string, orderId: string): Promise<OrdersResult<Order>> {
+  getOrder(
+    token: string,
+    orderId: string,
+    signal: AbortSignal,
+  ): Promise<OrdersResult<Order>> {
     return this.get(
       `/orders/${encodeURIComponent(orderId)}`,
       token,
+      signal,
       orderSchema,
     );
   }
@@ -33,13 +41,17 @@ export class OrdersClient {
   private async get<T>(
     path: string,
     token: string,
+    signal: AbortSignal,
     schema: ZodType<T>,
   ): Promise<OrdersResult<T>> {
     let response: Response;
     try {
       response = await fetch(new URL(path, this.ordersServiceUrl), {
         headers: { authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        signal: AbortSignal.any([
+          signal,
+          AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+        ]),
       });
     } catch (error) {
       this.logger.warn(`orders-service unreachable: ${(error as Error).name}`);

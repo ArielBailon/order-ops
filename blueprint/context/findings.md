@@ -15,10 +15,3 @@
 **Suggested fix:** Throw small domain errors (for example `InvalidCredentialsError`, `CustomersServiceUnavailableError`) or return a result from the service and map them to 401/503 in `LoginController`; adjust `login.service.spec.ts` accordingly. Nothing is deleted and no current requirement is lost. Alternatively record an explicit standards exception for thin gateway services.
 **Resolution:**
 
-### F-06 [P3] open - Client-disconnect abort is untested and does not reach tool HTTP calls
-
-**File:** apps/orderops-agent/src/chat/chat.controller.ts:32
-**Found:** 2026-09-28 by /audit independent (scope: current; lens: tests, performance)
-**Why it matters:** Step 3 requires aborting the agent via `AbortController` on client disconnect. The signal is passed to model calls, but no unit or e2e test exercises the disconnect path, and `OrdersClient` fetches use only `AbortSignal.timeout(5000)` (orders.client.ts:42), so an in-flight tool call keeps running for up to 5 s after the client leaves. Bounded, so low impact, but the spec'd behavior is unproven.
-**Suggested fix:** Add a service test that aborts the signal mid-loop and asserts no further model turns run; optionally pass the request signal into the tools (`AbortSignal.any([signal, AbortSignal.timeout(...)])`). No current requirement is lost.
-**Resolution:**
