@@ -107,10 +107,11 @@ export class ChatService {
       const toolCalls = full.tool_calls ?? [];
       if (toolCalls.length === 0) return;
       for (const call of toolCalls) {
-        yield {
-          type: 'tool_call',
-          data: { name: call.name as ToolName, args: call.args },
-        };
+        if (tools.some((t) => t.name === call.name))
+          yield {
+            type: 'tool_call',
+            data: { name: call.name as ToolName, args: call.args },
+          };
         messages.push(await this.runTool(tools, call));
       }
     }

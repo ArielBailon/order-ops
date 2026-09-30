@@ -175,6 +175,21 @@ describe('ChatService', () => {
     expect(events.at(-1)?.type).toBe('final');
   });
 
+  it('hides an unknown tool name from clients and tells the model', async () => {
+    const model = new FakeChatModel([
+      [toolCall('delete_everything', {})],
+      [text('Sorry.')],
+    ]);
+
+    const events = await run(model);
+
+    expect(events.some((e) => e.type === 'tool_call')).toBe(false);
+    expect(toolResults(model)).toEqual([
+      JSON.stringify({ error: 'unknown_tool' }),
+    ]);
+    expect(events.at(-1)?.type).toBe('final');
+  });
+
   it('stops with agent_error after the turn limit', async () => {
     const model = new FakeChatModel(
       Array.from({ length: 4 }, () => [toolCall('list_orders', {})]),
