@@ -324,6 +324,11 @@ until the global npm is updated.
 - Login: `POST http://localhost:3000/auth/login` with `{ "email", "password" }`;
   send the returned `accessToken` as `Authorization: Bearer <token>` to
   `GET :3001/orders`, `GET :3001/orders/:id`, `GET :3002/customers/me`
+- Chat: `POST http://localhost:3000/chat` with `{ "message", "threadId"? }` (uuid; omit to
+  start a thread) streams SSE; the `final` event returns the `threadId` to send
+  next. The gateway creates its LangGraph checkpoint tables at startup in the
+  same database; the `UserMemory` table comes from `npx prisma migrate deploy`
+  (`migrate dev` reports drift from the library-managed `policy_chunks` table)
 - Build: `npx nest build <app>` (`npm run build` builds only `orderops-agent`)
 - Production server (gateway): `npm run build && npm run start:prod`
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)

@@ -30,6 +30,7 @@ model Customer {
   passwordHash String
   createdAt    DateTime     @default(now())
   orders       Order[]
+  memory       UserMemory?
 }
 
 model Order {
@@ -44,4 +45,12 @@ model Order {
   deliveredAt DateTime?
 
   @@index([customerId])
+}
+
+/// Long-term facts the agent remembers about a customer, across threads.
+model UserMemory {
+  customerId String   @id
+  customer   Customer @relation(fields: [customerId], references: [id])
+  facts      String[]
+  updatedAt  DateTime @updatedAt
 }

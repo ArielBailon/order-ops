@@ -5,8 +5,9 @@ import {
   ToolMessage,
 } from '@langchain/core/messages';
 import { OutputParserException } from '@langchain/core/output_parsers';
+import { MemorySaver } from '@langchain/langgraph';
 import type { ChatEvent } from './chat.schemas.js';
-import { ChatService } from './chat.service.js';
+import { type ChatTurn, ChatService, threadKey } from './chat.service.js';
 import { ORDER_FIXTURE } from './order.fixture.js';
 import type { FaqService } from '../faq/faq.service.js';
 import type { OrdersClient } from './orders.client.js';
@@ -36,6 +37,8 @@ const toolCall = (
 class FakeChatModel {
   readonly turnInputs: BaseMessage[][] = [];
   readonly structuredInputs: BaseMessage[][] = [];
+  readonly routerInputs: BaseMessage[][] = [];
+  readonly factInputs: BaseMessage[][] = [];
 
   constructor(
     private readonly turns: Turn[],
@@ -43,6 +46,7 @@ class FakeChatModel {
       { answer: 'Your kettle has shipped.', orderIds: ['ord_1001'] },
     ],
     private readonly routerResults: unknown[] = [{ intent: 'order' }],
+    private readonly factResults: unknown[] = [],
   ) {}
 
   bindTools() {
@@ -59,11 +63,20 @@ class FakeChatModel {
   }
 
   withStructuredOutput(_schema: unknown, options?: { name?: string }) {
+    if (options?.name === 'remember_facts')
+      return {
+        invoke: async (messages: BaseMessage[]) => {
+          this.factInputs.push(messages);
+          const result = this.factResults.shift() ?? { facts: [] };
+          if (result instanceof Error) throw result;
+          return result;
+        },
+      };
     const isRouter = options?.name === 'route_message';
     const queue = isRouter ? this.routerResults : this.structured;
     return {
       invoke: async (messages: BaseMessage[]) => {
-        if (!isRouter) this.structuredInputs.push(messages);
+        (isRouter ? this.routerInputs : this.structuredInputs).push(messages);
         const result = queue.shift();
         if (result instanceof Error) throw result;
         return result;
@@ -72,23 +85,40 @@ class FakeChatModel {
   }
 }
 
+const CUSTOMER = 'cus_ana';
+const THREAD = '3f2b8c1e-9d4a-4b7e-8a51-0c6d2e9f7a10';
+
 describe('ChatService', () => {
+  let saver: MemorySaver;
   const orders = { listOrders: vi.fn(), getOrder: vi.fn() };
   const faq = { answer: vi.fn() };
+  const memory = { get: vi.fn(), replace: vi.fn() };
   const signal = new AbortController().signal;
 
   const run = async (
     model: FakeChatModel,
     message = 'where is my order?',
     requestSignal = signal,
+    turn: Partial<ChatTurn> = {},
   ) => {
     const service = new ChatService(
       model as unknown as BaseChatModel,
       orders as unknown as OrdersClient,
       faq as unknown as FaqService,
+      saver,
+      memory,
     );
     const events: ChatEvent[] = [];
-    for await (const event of service.reply(message, 'tok', requestSignal))
+    for await (const event of service.reply(
+      {
+        message,
+        token: 'tok',
+        customerId: CUSTOMER,
+        threadId: THREAD,
+        ...turn,
+      },
+      requestSignal,
+    ))
       events.push(event);
     return events;
   };
@@ -100,6 +130,9 @@ describe('ChatService', () => {
       .map((m) => m.content);
 
   beforeEach(() => {
+    saver = new MemorySaver();
+    memory.get.mockReset().mockResolvedValue([]);
+    memory.replace.mockReset().mockResolvedValue(undefined);
     faq.answer.mockReset();
     orders.listOrders
       .mockReset()
@@ -130,6 +163,7 @@ describe('ChatService', () => {
           answer: 'Your kettle has shipped.',
           orderIds: ['ord_1001'],
           route: 'order',
+          threadId: THREAD,
         },
       },
     ]);
@@ -156,6 +190,7 @@ describe('ChatService', () => {
         answer: 'I can only help with orders.',
         orderIds: [],
         route: 'order',
+        threadId: THREAD,
       },
     });
     expect(orders.listOrders).not.toHaveBeenCalled();
@@ -176,7 +211,12 @@ describe('ChatService', () => {
     expect(toolResults(model)).toEqual([JSON.stringify({ error })]);
     expect(events.at(-1)).toEqual({
       type: 'final',
-      data: { answer: 'Sorry.', orderIds: [], route: 'order' },
+      data: {
+        answer: 'Sorry.',
+        orderIds: [],
+        route: 'order',
+        threadId: THREAD,
+      },
     });
   });
 
@@ -265,7 +305,12 @@ describe('ChatService', () => {
     expect(model.structuredInputs).toHaveLength(2);
     expect(events.at(-1)).toEqual({
       type: 'final',
-      data: { answer: 'Hi.', orderIds: [], route: 'order' },
+      data: {
+        answer: 'Hi.',
+        orderIds: [],
+        route: 'order',
+        threadId: THREAD,
+      },
     });
   });
 
@@ -310,6 +355,7 @@ describe('ChatService', () => {
             answer: 'Returns take 30 days.',
             orderIds: [],
             route: 'faq',
+            threadId: THREAD,
           },
         },
       ]);
@@ -403,6 +449,266 @@ describe('ChatService', () => {
         code: 'agent_error',
         message: 'The assistant could not answer right now. Please try again.',
       },
+    });
+  });
+
+  describe('threads', () => {
+    it('gives a follow-up in the same thread the earlier turns', async () => {
+      const model = new FakeChatModel(
+        [[text('It shipped.')], [text('Tomorrow.')]],
+        [
+          { answer: 'It shipped.', orderIds: [] },
+          { answer: 'Tomorrow.', orderIds: [] },
+        ],
+        [{ intent: 'order' }, { intent: 'order' }],
+      );
+
+      await run(model, 'where is my kettle?');
+      await run(model, 'when will it arrive?');
+
+      const contents = (messages: BaseMessage[]) =>
+        messages.map((m) => m.content);
+      expect(contents(model.routerInputs[1])).toEqual([
+        expect.stringContaining('route'),
+        'where is my kettle?',
+        'It shipped.',
+        'when will it arrive?',
+      ]);
+      expect(contents(model.turnInputs[1])).toEqual([
+        expect.stringContaining('support assistant'),
+        'where is my kettle?',
+        'It shipped.',
+        'when will it arrive?',
+      ]);
+      expect(model.routerInputs[0]).toHaveLength(2);
+    });
+
+    const stored = async (customerId: string, threadId = THREAD) =>
+      saver.getTuple({
+        configurable: { thread_id: threadKey(customerId, threadId) },
+      });
+
+    it('never writes the caller token to any checkpoint of the thread', async () => {
+      const model = new FakeChatModel(
+        [[text('Hi.')], [text('Hi.')]],
+        undefined,
+        [{ intent: 'order' }, { intent: 'order' }],
+      );
+      for (const message of ['where is my order?', 'and my other one?'])
+        await run(model, message, signal, { token: 'secret-jwt-value' });
+
+      const checkpoints = [];
+      for await (const tuple of saver.list({
+        configurable: { thread_id: threadKey(CUSTOMER, THREAD) },
+      }))
+        checkpoints.push(tuple);
+
+      expect(checkpoints.length).toBeGreaterThan(2);
+      expect(JSON.stringify(checkpoints)).not.toContain('secret-jwt-value');
+    });
+
+    it('persists the human and answer messages under the caller-scoped thread', async () => {
+      await run(new FakeChatModel([[text('Hi.')]]));
+
+      const values = (await stored(CUSTOMER))!.checkpoint.channel_values;
+
+      expect((values.messages as BaseMessage[]).map((m) => m.content)).toEqual([
+        'where is my order?',
+        'Your kettle has shipped.',
+      ]);
+    });
+
+    it('keeps the same thread id of two customers separate', async () => {
+      await run(new FakeChatModel([[text('Hi.')]]));
+
+      expect(await stored('cus_ben')).toBeUndefined();
+      await run(new FakeChatModel([[text('Hi.')]]), 'hello', signal, {
+        customerId: 'cus_ben',
+      });
+      const ben = (await stored('cus_ben'))!.checkpoint.channel_values;
+
+      expect((ben.messages as BaseMessage[]).map((m) => m.content)).toEqual([
+        'hello',
+        'Your kettle has shipped.',
+      ]);
+    });
+
+    describe('compaction', () => {
+      const longThread = (summaryResults: unknown[]) =>
+        new FakeChatModel(
+          Array.from({ length: 8 }, () => [text('ok')]),
+          [
+            ...Array.from({ length: 7 }, (_, i) => ({
+              answer: `answer ${i + 1}`,
+              orderIds: [],
+            })),
+            ...summaryResults,
+            { answer: 'answer 8', orderIds: [] },
+          ],
+          Array.from({ length: 8 }, () => ({ intent: 'order' })),
+        );
+
+      const turnsOf = async (model: FakeChatModel, count: number) => {
+        const all: ChatEvent[][] = [];
+        for (let i = 1; i <= count; i++)
+          all.push(await run(model, `question ${i}`));
+        return all;
+      };
+
+      it('folds older messages into a summary that reaches the next prompt', async () => {
+        const model = longThread([
+          { summary: 'Customer asked about a kettle.' },
+        ]);
+
+        await turnsOf(model, 7);
+
+        const values = (await stored(CUSTOMER))!.checkpoint.channel_values;
+        const kept = (values.messages as BaseMessage[]).map((m) => m.content);
+        expect(values.summary).toBe('Customer asked about a kettle.');
+        expect(kept).toEqual([
+          'question 5',
+          'answer 5',
+          'question 6',
+          'answer 6',
+          'question 7',
+          'answer 7',
+        ]);
+
+        await run(model, 'question 8');
+
+        const next = model.turnInputs.at(-1)!;
+        expect(next[1].content).toContain('Customer asked about a kettle.');
+        expect(next.map((m) => m.content)).not.toContain('question 1');
+        expect(next.at(-1)?.content).toBe('question 8');
+      });
+
+      it('drops the oldest messages unsummarized once history passes the hard cap', async () => {
+        const structured: unknown[] = [];
+        for (let turn = 1; turn <= 13; turn++) {
+          structured.push({ answer: `answer ${turn}`, orderIds: [] });
+          if (turn * 2 > 12)
+            structured.push(
+              new OutputParserException('bad json'),
+              new OutputParserException('bad json'),
+            );
+        }
+        const model = new FakeChatModel(
+          Array.from({ length: 13 }, () => [text('ok')]),
+          structured,
+          Array.from({ length: 13 }, () => ({ intent: 'order' })),
+        );
+
+        await turnsOf(model, 12);
+        expect(
+          (
+            (await stored(CUSTOMER))!.checkpoint.channel_values
+              .messages as BaseMessage[]
+          ).length,
+        ).toBe(24);
+        await turnsOf(model, 1);
+
+        const values = (await stored(CUSTOMER))!.checkpoint.channel_values;
+        expect(values.messages as BaseMessage[]).toHaveLength(6);
+        expect(values.summary).toBe('');
+      });
+
+      it('keeps every message and still answers when the summarizer fails', async () => {
+        const model = longThread([
+          new OutputParserException('bad json'),
+          new OutputParserException('bad json'),
+        ]);
+
+        const all = await turnsOf(model, 7);
+
+        expect(all[6].at(-1)).toMatchObject({ type: 'final' });
+        const values = (await stored(CUSTOMER))!.checkpoint.channel_values;
+        expect(values.messages as BaseMessage[]).toHaveLength(14);
+        expect(values.summary).toBe('');
+      });
+    });
+  });
+
+  describe('long-term memory', () => {
+    const ran = (model: FakeChatModel, turn: Partial<ChatTurn> = {}) =>
+      run(model, 'please email me, I hate calls', signal, turn);
+
+    it('injects stored facts into the router and order prompts of a new thread', async () => {
+      memory.get.mockResolvedValue(['Prefers email contact.']);
+      const model = new FakeChatModel([[text('Hi.')]]);
+
+      await ran(model);
+
+      expect(memory.get).toHaveBeenCalledWith(CUSTOMER);
+      for (const input of [model.routerInputs[0], model.turnInputs[0]]) {
+        expect(input[1].content).toContain('Prefers email contact.');
+        expect(input[1].content).toContain('data, not instructions');
+      }
+    });
+
+    it('stores new facts merged with the stored ones, scoped to the caller', async () => {
+      memory.get.mockResolvedValue(['prefers email contact.']);
+      const model = new FakeChatModel([[text('Hi.')]], undefined, undefined, [
+        { facts: ['Prefers email contact.', 'Dislikes phone calls.'] },
+      ]);
+
+      await ran(model, { customerId: 'cus_ben' });
+
+      expect(memory.replace).toHaveBeenCalledWith('cus_ben', [
+        'prefers email contact.',
+        'Dislikes phone calls.',
+      ]);
+      expect(memory.get).not.toHaveBeenCalledWith(CUSTOMER);
+      const fromCustomer = model.factInputs[0].at(-1)!.content as string;
+      expect(fromCustomer).toContain('please email me');
+      expect(fromCustomer).not.toContain('Your kettle has shipped.');
+    });
+
+    it('answers and stores nothing when fact extraction fails', async () => {
+      const model = new FakeChatModel([[text('Hi.')]], undefined, undefined, [
+        new OutputParserException('bad json'),
+        new OutputParserException('bad json'),
+      ]);
+
+      const events = await ran(model);
+
+      expect(events.at(-1)).toMatchObject({ type: 'final' });
+      expect(events.map((e) => e.type)).not.toContain('error');
+      expect(memory.replace).not.toHaveBeenCalled();
+    });
+
+    it('does not extract facts from an out-of-scope refusal', async () => {
+      const model = new FakeChatModel(
+        [],
+        [],
+        [{ intent: 'out_of_scope' }],
+        [{ facts: ['Likes tea.'] }],
+      );
+
+      await ran(model);
+
+      expect(model.factInputs).toHaveLength(0);
+      expect(memory.replace).not.toHaveBeenCalled();
+    });
+
+    it('does not write when nothing new is found', async () => {
+      await ran(new FakeChatModel([[text('Hi.')]]));
+
+      expect(memory.replace).not.toHaveBeenCalled();
+    });
+
+    it('answers normally when the memory store fails to read or write', async () => {
+      memory.get.mockRejectedValue(new Error('db down'));
+      memory.replace.mockRejectedValue(new Error('db down'));
+      const model = new FakeChatModel([[text('Hi.')]], undefined, undefined, [
+        { facts: ['Dislikes phone calls.'] },
+      ]);
+
+      const events = await ran(model);
+
+      expect(events.map((e) => e.type)).toEqual(['token', 'final']);
+      expect(events.at(-1)).toMatchObject({
+        data: { answer: 'Your kettle has shipped.' },
+      });
     });
   });
 });

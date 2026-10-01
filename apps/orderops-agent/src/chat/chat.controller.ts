@@ -6,7 +6,13 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { JwtAuthGuard, ZodValidationPipe } from '@app/auth';
+import { randomUUID } from 'node:crypto';
+import {
+  type AuthenticatedCustomer,
+  CurrentCustomer,
+  JwtAuthGuard,
+  ZodValidationPipe,
+} from '@app/auth';
 import type { Response } from 'express';
 import {
   type ChatRequest,
@@ -22,7 +28,9 @@ export class ChatController {
 
   @Post()
   async stream(
-    @Body(new ZodValidationPipe(chatRequestSchema)) { message }: ChatRequest,
+    @Body(new ZodValidationPipe(chatRequestSchema))
+    { message, threadId }: ChatRequest,
+    @CurrentCustomer() { customerId }: AuthenticatedCustomer,
     @Headers('authorization') authorization: string,
     @Res() res: Response,
   ): Promise<void> {
@@ -38,7 +46,13 @@ export class ChatController {
     });
     res.flushHeaders();
 
-    for await (const event of this.chat.reply(message, token, abort.signal)) {
+    const turn = {
+      message,
+      token,
+      customerId,
+      threadId: threadId ?? randomUUID(),
+    };
+    for await (const event of this.chat.reply(turn, abort.signal)) {
       if (abort.signal.aborted) break;
       res.write(formatSseEvent(event));
     }

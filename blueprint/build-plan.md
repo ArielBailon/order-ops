@@ -4,7 +4,7 @@
   - [x] 1a. Mock services and login - customers-service and orders-service backed by Postgres via Prisma with seed data, a gateway login endpoint that issues JWTs, and services that validate the token and return only the caller's own data
   - [x] 1b. SSE order chat - authenticated SSE chat endpoint where the agent answers "where is my order?" by calling orders-service via LangChain tool calling with the user's token, with Zod-validated structured output
 - [x] 2. Routed agent graph - LangGraph intent router with FAQ route (deterministic RAG over policy docs in pgvector), order route and out-of-scope refusal route
-- [ ] 3. Conversational memory - multi-turn threads persisted with the Postgres checkpointer, long-term per-user memory, and context trimming/summarization
+- [x] 3. Conversational memory - multi-turn threads persisted with the Postgres checkpointer, long-term per-user memory, and context trimming/summarization
 - [ ] 4. Guarded refunds - refund requests with business rules enforced in code, output validation with bounded retry, human approval via interrupt(), and deterministic fallback on agent failure
 - [ ] 5. Multi-provider models - Anthropic, OpenAI and Bedrock behind one interface, cheap-vs-strong model routing, and provider failover
 - [ ] 6. Traces and cost - per-request tracing of agent decisions, tools, tokens, p95 latency and cost per conversation, plus prompt caching

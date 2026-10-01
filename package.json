@@ -28,6 +28,7 @@
     "@langchain/anthropic": "^1.5.11",
     "@langchain/core": "^1.2.12",
     "@langchain/langgraph": "^1.4.18",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.5",
     "@langchain/openai": "^1.6.1",
     "@langchain/pgvector": "^0.1.0",
     "@langchain/textsplitters": "^1.0.2",

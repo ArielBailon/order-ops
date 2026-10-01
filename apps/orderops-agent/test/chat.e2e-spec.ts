@@ -1,12 +1,16 @@
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { AIMessageChunk } from '@langchain/core/messages';
+import { AIMessageChunk, type BaseMessage } from '@langchain/core/messages';
+import { MemorySaver } from '@langchain/langgraph';
 import request from 'supertest';
 import { CHAT_MODEL } from '../src/chat/chat.service.js';
 import { ORDER_FIXTURE } from '../src/chat/order.fixture.js';
+import { CHECKPOINTER } from '../src/memory/checkpointer.js';
+import { USER_MEMORY } from '../src/memory/user-memory.store.js';
 import { EMBEDDINGS, POLICY_STORE } from '../src/faq/policy-store.js';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SECRET = 'e2e-secret-that-is-at-least-32-chars';
 
 describe('gateway chat (e2e)', () => {
@@ -15,6 +19,7 @@ describe('gateway chat (e2e)', () => {
   const fetchMock = vi.fn();
   let turns: AIMessageChunk[][] = [];
   let intent = 'order';
+  let routerInputs: BaseMessage[][] = [];
   const similaritySearch = vi.fn();
   const model = {
     bindTools: () => ({
@@ -27,8 +32,12 @@ describe('gateway chat (e2e)', () => {
       },
     }),
     withStructuredOutput: (_schema: unknown, options?: { name?: string }) => ({
-      invoke: async () => {
-        if (options?.name === 'route_message') return { intent };
+      invoke: async (messages: BaseMessage[]) => {
+        if (options?.name === 'route_message') {
+          routerInputs.push(messages);
+          return { intent };
+        }
+        if (options?.name === 'remember_facts') return { facts: [] };
         if (options?.name === 'faq_answer')
           return { answer: 'Returns are accepted for 30 days.' };
         return { answer: 'Your kettle has shipped.', orderIds: ['ord_1001'] };
@@ -46,6 +55,13 @@ describe('gateway chat (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(CHAT_MODEL)
       .useValue(model)
+      .overrideProvider(CHECKPOINTER)
+      .useValue(new MemorySaver())
+      .overrideProvider(USER_MEMORY)
+      .useValue({
+        get: async () => [],
+        replace: async () => undefined,
+      })
       .overrideProvider(EMBEDDINGS)
       .useValue({})
       .overrideProvider(POLICY_STORE)
@@ -67,6 +83,7 @@ describe('gateway chat (e2e)', () => {
     fetchMock.mockReset();
     turns = [];
     intent = 'order';
+    routerInputs = [];
     similaritySearch.mockReset();
   });
 
@@ -97,6 +114,14 @@ describe('gateway chat (e2e)', () => {
       .send({ message: '   ' })
       .expect(400);
     expect(turns).toHaveLength(1);
+  });
+
+  it('POST /chat returns 400 for a threadId that is not a uuid', async () => {
+    await request(app.getHttpServer())
+      .post('/chat')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ message: 'hi', threadId: 'not-a-uuid' })
+      .expect(400);
   });
 
   it('POST /chat streams tool_call, token, and final events', async () => {
@@ -142,6 +167,7 @@ describe('gateway chat (e2e)', () => {
           answer: 'Your kettle has shipped.',
           orderIds: ['ord_1001'],
           route: 'order',
+          threadId: expect.stringMatching(UUID),
         },
       },
     ]);
@@ -172,6 +198,7 @@ describe('gateway chat (e2e)', () => {
           answer: 'Returns are accepted for 30 days.',
           orderIds: [],
           route: 'faq',
+          threadId: expect.stringMatching(UUID),
         },
       },
     ]);
@@ -195,6 +222,51 @@ describe('gateway chat (e2e)', () => {
     });
     expect(similaritySearch).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('threads', () => {
+    const ask = async (message: string, bearer: string, threadId?: string) => {
+      const res = await request(app.getHttpServer())
+        .post('/chat')
+        .set('Authorization', `Bearer ${bearer}`)
+        .send({ message, threadId })
+        .expect(200);
+      return parseEvents(res.text).at(-1)!.data as { threadId: string };
+    };
+    const answer = () => [
+      new AIMessageChunk({ content: 'Your kettle has shipped.' }),
+    ];
+    const contents = (messages: BaseMessage[]) =>
+      messages.map((m) => m.content);
+
+    it('POST /chat continues a thread: the second request sees the first turn', async () => {
+      turns = [answer(), answer()];
+
+      const { threadId } = await ask('where is my kettle?', token);
+      expect(threadId).toMatch(UUID);
+      const second = await ask('when will it arrive?', token, threadId);
+
+      expect(second.threadId).toBe(threadId);
+      expect(contents(routerInputs[1]).slice(1)).toEqual([
+        'where is my kettle?',
+        'Your kettle has shipped.',
+        'when will it arrive?',
+      ]);
+    });
+
+    it('POST /chat does not expose a thread to another customer', async () => {
+      turns = [answer(), answer()];
+      const other = await new JwtService({ secret: SECRET }).signAsync({
+        sub: 'cus_ben',
+      });
+
+      const { threadId } = await ask('where is my kettle?', token);
+      await ask('when will it arrive?', other, threadId);
+
+      expect(contents(routerInputs[1]).slice(1)).toEqual([
+        'when will it arrive?',
+      ]);
+    });
   });
 
   it('POST /chat ends the stream with one error event when the model fails', async () => {

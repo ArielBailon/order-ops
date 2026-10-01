@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(2000),
+  threadId: z.uuid().optional(),
 });
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
@@ -31,8 +32,8 @@ export type ToolName = 'list_orders' | 'get_order';
 
 export type ChatErrorCode = 'agent_error' | 'invalid_output';
 
-/** SSE events streamed by POST /chat. `approval_required` is reserved for item 4. */
-export type ChatEvent =
+/** Events graph nodes stream; the service adds the thread id to `final`. */
+export type AgentEvent =
   | { type: 'token'; data: { text: string } }
   | {
       type: 'tool_call';
@@ -40,6 +41,11 @@ export type ChatEvent =
     }
   | { type: 'final'; data: FinalReply }
   | { type: 'error'; data: { code: ChatErrorCode; message: string } };
+
+/** SSE events streamed by POST /chat. `approval_required` is reserved for item 4. */
+export type ChatEvent =
+  | Exclude<AgentEvent, { type: 'final' }>
+  | { type: 'final'; data: FinalReply & { threadId: string } };
 
 export const CHAT_ERROR_MESSAGES: Record<ChatErrorCode, string> = {
   agent_error: 'The assistant could not answer right now. Please try again.',

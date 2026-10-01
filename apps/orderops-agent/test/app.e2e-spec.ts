@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { MemorySaver } from '@langchain/langgraph';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 
@@ -17,9 +18,15 @@ describe('gateway auth (e2e)', () => {
     const { AppModule } = await import('../src/app.module.js');
     const { EMBEDDINGS, POLICY_STORE } =
       await import('../src/faq/policy-store.js');
+    const { CHECKPOINTER } = await import('../src/memory/checkpointer.js');
+    const { USER_MEMORY } = await import('../src/memory/user-memory.store.js');
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
+      .overrideProvider(CHECKPOINTER)
+      .useValue(new MemorySaver())
+      .overrideProvider(USER_MEMORY)
+      .useValue({})
       .overrideProvider(EMBEDDINGS)
       .useValue({})
       .overrideProvider(POLICY_STORE)
