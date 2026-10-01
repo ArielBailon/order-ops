@@ -17,6 +17,16 @@ export const finalAnswerSchema = z.object({
 
 export type FinalAnswer = z.infer<typeof finalAnswerSchema>;
 
+export const chatRouteSchema = z.enum(['faq', 'order', 'out_of_scope']);
+
+export type ChatRoute = z.infer<typeof chatRouteSchema>;
+
+export const routedIntentSchema = z.object({
+  intent: chatRouteSchema.describe('Which route should handle the message'),
+});
+
+export type FinalReply = FinalAnswer & { route: ChatRoute };
+
 export type ToolName = 'list_orders' | 'get_order';
 
 export type ChatErrorCode = 'agent_error' | 'invalid_output';
@@ -28,7 +38,7 @@ export type ChatEvent =
       type: 'tool_call';
       data: { name: ToolName; args: Record<string, unknown> };
     }
-  | { type: 'final'; data: FinalAnswer }
+  | { type: 'final'; data: FinalReply }
   | { type: 'error'; data: { code: ChatErrorCode; message: string } };
 
 export const CHAT_ERROR_MESSAGES: Record<ChatErrorCode, string> = {

@@ -8,6 +8,7 @@ import { OutputParserException } from '@langchain/core/output_parsers';
 import type { ChatEvent } from './chat.schemas.js';
 import { ChatService } from './chat.service.js';
 import { ORDER_FIXTURE } from './order.fixture.js';
+import type { FaqService } from '../faq/faq.service.js';
 import type { OrdersClient } from './orders.client.js';
 
 type Turn = AIMessageChunk[];
@@ -41,6 +42,7 @@ class FakeChatModel {
     private readonly structured: unknown[] = [
       { answer: 'Your kettle has shipped.', orderIds: ['ord_1001'] },
     ],
+    private readonly routerResults: unknown[] = [{ intent: 'order' }],
   ) {}
 
   bindTools() {
@@ -56,11 +58,13 @@ class FakeChatModel {
     };
   }
 
-  withStructuredOutput() {
+  withStructuredOutput(_schema: unknown, options?: { name?: string }) {
+    const isRouter = options?.name === 'route_message';
+    const queue = isRouter ? this.routerResults : this.structured;
     return {
       invoke: async (messages: BaseMessage[]) => {
-        this.structuredInputs.push(messages);
-        const result = this.structured.shift();
+        if (!isRouter) this.structuredInputs.push(messages);
+        const result = queue.shift();
         if (result instanceof Error) throw result;
         return result;
       },
@@ -70,6 +74,7 @@ class FakeChatModel {
 
 describe('ChatService', () => {
   const orders = { listOrders: vi.fn(), getOrder: vi.fn() };
+  const faq = { answer: vi.fn() };
   const signal = new AbortController().signal;
 
   const run = async (
@@ -80,6 +85,7 @@ describe('ChatService', () => {
     const service = new ChatService(
       model as unknown as BaseChatModel,
       orders as unknown as OrdersClient,
+      faq as unknown as FaqService,
     );
     const events: ChatEvent[] = [];
     for await (const event of service.reply(message, 'tok', requestSignal))
@@ -94,6 +100,7 @@ describe('ChatService', () => {
       .map((m) => m.content);
 
   beforeEach(() => {
+    faq.answer.mockReset();
     orders.listOrders
       .mockReset()
       .mockResolvedValue({ ok: true, data: [ORDER_FIXTURE] });
@@ -119,10 +126,18 @@ describe('ChatService', () => {
       { type: 'token', data: { text: 'kettle shipped.' } },
       {
         type: 'final',
-        data: { answer: 'Your kettle has shipped.', orderIds: ['ord_1001'] },
+        data: {
+          answer: 'Your kettle has shipped.',
+          orderIds: ['ord_1001'],
+          route: 'order',
+        },
       },
     ]);
-    expect(orders.getOrder).toHaveBeenCalledWith('tok', 'ord_1001', signal);
+    expect(orders.getOrder).toHaveBeenCalledWith(
+      'tok',
+      'ord_1001',
+      expect.any(AbortSignal),
+    );
     expect(toolResults(model)).toEqual([JSON.stringify(ORDER_FIXTURE)]);
     expect(model.structuredInputs[0].at(-1)?.content).toContain('final reply');
   });
@@ -137,7 +152,11 @@ describe('ChatService', () => {
 
     expect(events.at(-1)).toEqual({
       type: 'final',
-      data: { answer: 'I can only help with orders.', orderIds: [] },
+      data: {
+        answer: 'I can only help with orders.',
+        orderIds: [],
+        route: 'order',
+      },
     });
     expect(orders.listOrders).not.toHaveBeenCalled();
   });
@@ -157,7 +176,7 @@ describe('ChatService', () => {
     expect(toolResults(model)).toEqual([JSON.stringify({ error })]);
     expect(events.at(-1)).toEqual({
       type: 'final',
-      data: { answer: 'Sorry.', orderIds: [] },
+      data: { answer: 'Sorry.', orderIds: [], route: 'order' },
     });
   });
 
@@ -170,7 +189,10 @@ describe('ChatService', () => {
 
     const events = await run(model);
 
-    expect(orders.listOrders).toHaveBeenCalledWith('tok', signal);
+    expect(orders.listOrders).toHaveBeenCalledWith(
+      'tok',
+      expect.any(AbortSignal),
+    );
     expect(orders.getOrder).not.toHaveBeenCalled();
     expect(toolResults(model)).toEqual([
       JSON.stringify([ORDER_FIXTURE]),
@@ -243,7 +265,7 @@ describe('ChatService', () => {
     expect(model.structuredInputs).toHaveLength(2);
     expect(events.at(-1)).toEqual({
       type: 'final',
-      data: { answer: 'Hi.', orderIds: [] },
+      data: { answer: 'Hi.', orderIds: [], route: 'order' },
     });
   });
 
@@ -262,6 +284,100 @@ describe('ChatService', () => {
         message:
           'The assistant could not produce a valid answer. Please try again.',
       },
+    });
+  });
+
+  describe('routing', () => {
+    it('answers an FAQ message from the FAQ route without the tool model', async () => {
+      faq.answer.mockResolvedValue({
+        answer: 'Returns take 30 days.',
+        orderIds: [],
+      });
+      const model = new FakeChatModel([], [], [{ intent: 'faq' }]);
+
+      const events = await run(model, 'what is your return policy?');
+
+      expect(faq.answer).toHaveBeenCalledWith(
+        'what is your return policy?',
+        expect.anything(),
+      );
+      expect(model.turnInputs).toHaveLength(0);
+      expect(orders.listOrders).not.toHaveBeenCalled();
+      expect(events).toEqual([
+        {
+          type: 'final',
+          data: {
+            answer: 'Returns take 30 days.',
+            orderIds: [],
+            route: 'faq',
+          },
+        },
+      ]);
+    });
+
+    it('refuses an out-of-scope message with no other model or service call', async () => {
+      const model = new FakeChatModel([], [], [{ intent: 'out_of_scope' }]);
+
+      const events = await run(model, 'write me a poem');
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'final',
+        data: { orderIds: [], route: 'out_of_scope' },
+      });
+      expect(model.turnInputs).toHaveLength(0);
+      expect(model.structuredInputs).toHaveLength(0);
+      expect(faq.answer).not.toHaveBeenCalled();
+    });
+
+    it('retries an invalid router answer once', async () => {
+      faq.answer.mockResolvedValue({ answer: 'ok', orderIds: [] });
+      const model = new FakeChatModel(
+        [],
+        [],
+        [{ intent: 'refund' }, { intent: 'faq' }],
+      );
+
+      const events = await run(model);
+
+      expect(events.at(-1)).toMatchObject({
+        type: 'final',
+        data: { route: 'faq' },
+      });
+    });
+
+    it('emits invalid_output when the router never returns a valid intent', async () => {
+      const model = new FakeChatModel(
+        [],
+        [],
+        [{ intent: 'x' }, { intent: 'y' }],
+      );
+
+      const events = await run(model);
+
+      expect(events).toEqual([
+        {
+          type: 'error',
+          data: {
+            code: 'invalid_output',
+            message:
+              'The assistant could not produce a valid answer. Please try again.',
+          },
+        },
+      ]);
+    });
+
+    it('maps an FAQ route failure to one generic error', async () => {
+      faq.answer.mockRejectedValue(new Error('embeddings down'));
+      const model = new FakeChatModel([], [], [{ intent: 'faq' }]);
+
+      const events = await run(model);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'error',
+        data: { code: 'agent_error' },
+      });
     });
   });
 

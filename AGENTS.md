@@ -311,6 +311,11 @@ until the global npm is updated.
 - Migrate + seed: `npx prisma migrate dev`, `npx prisma generate`, then `npx prisma db seed`
   (idempotent). Seed customers `ana@example.com`, `ben@example.com`,
   `cora@example.com` share the dev password `orderops-dev-password`
+- Policy index (FAQ route): `npm run ingest:policies` embeds
+  `apps/orderops-agent/policies/*.md` into the `policy_chunks` pgvector table
+  (needs `DATABASE_URL` and `OPENAI_API_KEY` in `.env`; replaces the whole
+  index, so reruns are idempotent). Run it once before using the FAQ route;
+  the gateway also requires `OPENAI_API_KEY` at startup
 - Dev servers: `npm run start:all` starts all three in watch mode with
   prefixed output (Ctrl+C stops them all), or one at a time:
   `npm run start:dev` (gateway, :3000),

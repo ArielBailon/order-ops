@@ -10,12 +10,21 @@ describe('gateway auth (e2e)', () => {
   beforeAll(async () => {
     process.env.JWT_SECRET = 'e2e-secret-that-is-at-least-32-chars';
     process.env.ANTHROPIC_API_KEY = 'e2e-fake-key';
+    process.env.OPENAI_API_KEY = 'e2e-fake-key';
+    process.env.DATABASE_URL = 'postgresql://e2e:e2e@127.0.0.1:5432/e2e';
     vi.stubGlobal('fetch', fetchMock);
     // Imported after setting env: ConfigModule validates it when the module loads.
     const { AppModule } = await import('../src/app.module.js');
+    const { EMBEDDINGS, POLICY_STORE } =
+      await import('../src/faq/policy-store.js');
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(EMBEDDINGS)
+      .useValue({})
+      .overrideProvider(POLICY_STORE)
+      .useValue({})
+      .compile();
     app = moduleRef.createNestApplication();
     await app.init();
   });
