@@ -14,6 +14,13 @@ enum CustomerTier {
   premium
 }
 
+enum RefundStatus {
+  pending_approval
+  approved
+  rejected
+  auto_rejected
+}
+
 enum OrderStatus {
   pending
   processing
@@ -31,6 +38,7 @@ model Customer {
   createdAt    DateTime     @default(now())
   orders       Order[]
   memory       UserMemory?
+  refunds      RefundRequest[]
 }
 
 model Order {
@@ -43,6 +51,7 @@ model Order {
   createdAt   DateTime
   shippedAt   DateTime?
   deliveredAt DateTime?
+  refunds     RefundRequest[]
 
   @@index([customerId])
 }
@@ -53,4 +62,22 @@ model UserMemory {
   customer   Customer @relation(fields: [customerId], references: [id])
   facts      String[]
   updatedAt  DateTime @updatedAt
+}
+
+/// A customer's refund request. At most one per order may be pending_approval (partial unique index in the migration).
+model RefundRequest {
+  id             String       @id
+  orderId        String
+  order          Order        @relation(fields: [orderId], references: [id])
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+  amount         Decimal      @db.Decimal(10, 2)
+  reason         String
+  status         RefundStatus
+  decidedBy      String?
+  decisionReason String?
+  createdAt      DateTime     @default(now())
+
+  @@index([customerId])
+  @@index([orderId])
 }

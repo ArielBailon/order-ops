@@ -10,6 +10,7 @@ import type { ChatEvent } from './chat.schemas.js';
 import { type ChatTurn, ChatService, threadKey } from './chat.service.js';
 import { ORDER_FIXTURE } from './order.fixture.js';
 import type { FaqService } from '../faq/faq.service.js';
+import type { RefundStore } from '../refunds/refund.store.js';
 import type { OrdersClient } from './orders.client.js';
 
 type Turn = AIMessageChunk[];
@@ -93,6 +94,7 @@ describe('ChatService', () => {
   const orders = { listOrders: vi.fn(), getOrder: vi.fn() };
   const faq = { answer: vi.fn() };
   const memory = { get: vi.fn(), replace: vi.fn() };
+  const refunds = { findOpenForOrder: vi.fn(), create: vi.fn() };
   const signal = new AbortController().signal;
 
   const run = async (
@@ -107,6 +109,7 @@ describe('ChatService', () => {
       faq as unknown as FaqService,
       saver,
       memory,
+      refunds as unknown as RefundStore,
     );
     const events: ChatEvent[] = [];
     for await (const event of service.reply(
@@ -133,6 +136,11 @@ describe('ChatService', () => {
     saver = new MemorySaver();
     memory.get.mockReset().mockResolvedValue([]);
     memory.replace.mockReset().mockResolvedValue(undefined);
+    refunds.findOpenForOrder.mockReset().mockResolvedValue(null);
+    refunds.create.mockReset().mockResolvedValue({
+      ok: true,
+      refund: { id: 'ref_new', status: 'pending_approval' },
+    });
     faq.answer.mockReset();
     orders.listOrders
       .mockReset()
@@ -332,6 +340,69 @@ describe('ChatService', () => {
     });
   });
 
+  describe('refund route', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('stores a valid request and answers from fixed text without streaming model prose', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
+      orders.getOrder.mockResolvedValue({
+        ok: true,
+        data: {
+          ...ORDER_FIXTURE,
+          total: '89.90',
+          status: 'delivered',
+          deliveredAt: '2026-08-06T16:30:00.000Z',
+        },
+      });
+      const model = new FakeChatModel(
+        [[text('Sure, I approved it!')]],
+        [{ orderId: 'ord_1001', amount: null, reason: 'Arrived broken' }],
+        [{ intent: 'refund' }],
+      );
+
+      const events = await run(model, 'I want a refund for ord_1001');
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'final',
+        data: {
+          route: 'refund',
+          orderIds: ['ord_1001'],
+          refund: { id: 'ref_new', status: 'pending_approval' },
+          threadId: THREAD,
+        },
+      });
+      expect(JSON.stringify(events)).not.toContain('approved it');
+      expect(refunds.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerId: CUSTOMER,
+          amount: '89.90',
+          status: 'pending_approval',
+        }),
+      );
+    });
+
+    it('answers with the fallback text, not an error event, when the agent fails', async () => {
+      const model = new FakeChatModel(
+        [[text('hmm')]],
+        [
+          new OutputParserException('bad json'),
+          new OutputParserException('bad json'),
+        ],
+        [{ intent: 'refund' }],
+      );
+
+      const events = await run(model, 'refund please');
+
+      expect(events.map((e) => e.type)).toEqual(['final']);
+      expect(events[0]).toMatchObject({
+        data: { route: 'refund', orderIds: [] },
+      });
+      expect(refunds.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('routing', () => {
     it('answers an FAQ message from the FAQ route without the tool model', async () => {
       faq.answer.mockResolvedValue({
@@ -381,7 +452,7 @@ describe('ChatService', () => {
       const model = new FakeChatModel(
         [],
         [],
-        [{ intent: 'refund' }, { intent: 'faq' }],
+        [{ intent: 'cancel' }, { intent: 'faq' }],
       );
 
       const events = await run(model);

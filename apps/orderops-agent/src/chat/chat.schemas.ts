@@ -18,7 +18,12 @@ export const finalAnswerSchema = z.object({
 
 export type FinalAnswer = z.infer<typeof finalAnswerSchema>;
 
-export const chatRouteSchema = z.enum(['faq', 'order', 'out_of_scope']);
+export const chatRouteSchema = z.enum([
+  'faq',
+  'order',
+  'refund',
+  'out_of_scope',
+]);
 
 export type ChatRoute = z.infer<typeof chatRouteSchema>;
 
@@ -26,7 +31,16 @@ export const routedIntentSchema = z.object({
   intent: chatRouteSchema.describe('Which route should handle the message'),
 });
 
-export type FinalReply = FinalAnswer & { route: ChatRoute };
+/** Set on refund-route replies when a request was stored or an open one was reused. */
+export interface RefundSummary {
+  id: string;
+  status: 'pending_approval' | 'auto_rejected';
+}
+
+export type FinalReply = FinalAnswer & {
+  route: ChatRoute;
+  refund?: RefundSummary;
+};
 
 export type ToolName = 'list_orders' | 'get_order';
 

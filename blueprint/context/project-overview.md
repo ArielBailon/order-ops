@@ -1,6 +1,6 @@
 # OrderOps Agent - Project Overview
 
-<!-- blueprint:source-hash 934853f3c7b81b28f3a29f67dd701744084a74baded8fcc3c496d8d77296a3b5 -->
+<!-- blueprint:source-hash 0ecdd267f43649d06afaaac5750970e23846bf813263dc5df82ba5c3da35ca8a -->
 
 > A support and operations agent for a fictional e-commerce store (NestJS + LangChain.js + LangGraph.js), built as a guided, deliberately scoped learning and portfolio project for production agentic patterns.
 
@@ -24,6 +24,8 @@ Build order from `build-plan.md`. Each item is a large, end-to-end feature (data
 2. **Routed agent graph** - LangGraph intent router with a FAQ route (deterministic RAG over policy docs in pgvector), the order route, and an out-of-scope controlled-refusal route.
 3. **Conversational memory** - multi-turn threads persisted by the Postgres checkpointer, long-term per-user memory, and context trimming/summarization.
 4. **Guarded refunds** - refund route with business rules enforced in code, output validation with bounded retry, operator approval via `interrupt()`, and a deterministic fallback when the agent fails.
+   - **4a. Refund rules and request route** - RefundRequest storage in the gateway, code-enforced rules (delivered order, 30-day window, amount <= total, no other open request), refund route with validation, bounded retry and deterministic fallback; creates `pending_approval` requests.
+   - **4b. Operator approval** - operator identity, `interrupt()` approval, approve/reject endpoints that resume the thread, `approval_required` SSE event.
 5. **Multi-provider models** - Anthropic, OpenAI, and AWS Bedrock behind one interface; cheap model for classification, strong model for reasoning; failover to another provider on error.
 6. **Traces and cost** - per-request tracing of agent decisions, tools, tokens, latency (p95), and cost per conversation, plus prompt caching where supported.
 7. **Regression evals** - ~40-case dataset (normal, out-of-scope, adversarial); tool-selection, trajectory, answer quality (LLM-as-judge), and guardrail metrics; versioned results; CI workflow; provider comparison table.

@@ -75,7 +75,7 @@ export async function runOrderRoute({
   };
 }
 
-async function runToolLoop(
+export async function runToolLoop(
   model: BaseChatModel,
   messages: BaseMessage[],
   tools: StructuredToolInterface[],

@@ -327,8 +327,14 @@ until the global npm is updated.
 - Chat: `POST http://localhost:3000/chat` with `{ "message", "threadId"? }` (uuid; omit to
   start a thread) streams SSE; the `final` event returns the `threadId` to send
   next. The gateway creates its LangGraph checkpoint tables at startup in the
-  same database; the `UserMemory` table comes from `npx prisma migrate deploy`
-  (`migrate dev` reports drift from the library-managed `policy_chunks` table)
+  same database; the `UserMemory` and `RefundRequest` tables come from
+  `npx prisma migrate deploy` (`migrate dev` reports drift from library-managed
+  tables such as `policy_chunks` and asks to reset the database: do not)
+- Refunds: a refund request in chat answers with `route: "refund"`; the `final`
+  event carries `refund: { id, status }` (`pending_approval` or `auto_rejected`)
+  when a request was stored or an open one reused. Rules (delivered, within 30 days
+  of delivery, amount <= order total, one open request per order) are enforced in
+  code; operator approval comes with feature 4b
 - Build: `npx nest build <app>` (`npm run build` builds only `orderops-agent`)
 - Production server (gateway): `npm run build && npm run start:prod`
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)

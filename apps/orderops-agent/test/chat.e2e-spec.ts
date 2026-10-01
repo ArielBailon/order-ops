@@ -8,6 +8,7 @@ import { CHAT_MODEL } from '../src/chat/chat.service.js';
 import { ORDER_FIXTURE } from '../src/chat/order.fixture.js';
 import { CHECKPOINTER } from '../src/memory/checkpointer.js';
 import { USER_MEMORY } from '../src/memory/user-memory.store.js';
+import { REFUND_STORE } from '../src/refunds/refund.store.js';
 import { EMBEDDINGS, POLICY_STORE } from '../src/faq/policy-store.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -19,6 +20,8 @@ describe('gateway chat (e2e)', () => {
   const fetchMock = vi.fn();
   let turns: AIMessageChunk[][] = [];
   let intent = 'order';
+  let proposal: Record<string, unknown> = {};
+  const createRefund = vi.fn();
   let routerInputs: BaseMessage[][] = [];
   const similaritySearch = vi.fn();
   const model = {
@@ -38,6 +41,7 @@ describe('gateway chat (e2e)', () => {
           return { intent };
         }
         if (options?.name === 'remember_facts') return { facts: [] };
+        if (options?.name === 'refund_proposal') return proposal;
         if (options?.name === 'faq_answer')
           return { answer: 'Returns are accepted for 30 days.' };
         return { answer: 'Your kettle has shipped.', orderIds: ['ord_1001'] };
@@ -57,6 +61,11 @@ describe('gateway chat (e2e)', () => {
       .useValue(model)
       .overrideProvider(CHECKPOINTER)
       .useValue(new MemorySaver())
+      .overrideProvider(REFUND_STORE)
+      .useValue({
+        findOpenForOrder: async () => null,
+        create: createRefund,
+      })
       .overrideProvider(USER_MEMORY)
       .useValue({
         get: async () => [],
@@ -83,6 +92,11 @@ describe('gateway chat (e2e)', () => {
     fetchMock.mockReset();
     turns = [];
     intent = 'order';
+    proposal = {};
+    createRefund.mockReset().mockImplementation(async (input) => ({
+      ok: true,
+      refund: { id: 'ref_e2e', status: input.status },
+    }));
     routerInputs = [];
     similaritySearch.mockReset();
   });
@@ -266,6 +280,77 @@ describe('gateway chat (e2e)', () => {
       expect(contents(routerInputs[1]).slice(1)).toEqual([
         'when will it arrive?',
       ]);
+    });
+  });
+
+  describe('refunds', () => {
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * 86_400_000).toISOString();
+    const deliveredOrder = (deliveredDaysAgo: number) => ({
+      ...ORDER_FIXTURE,
+      total: '89.90',
+      status: 'delivered',
+      deliveredAt: daysAgo(deliveredDaysAgo),
+    });
+    const requestRefund = async () => {
+      turns = [[new AIMessageChunk({ content: 'thinking' })]];
+      intent = 'refund';
+      proposal = {
+        orderId: 'ord_1001',
+        amount: null,
+        reason: 'Arrived broken',
+      };
+      const res = await request(app.getHttpServer())
+        .post('/chat')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ message: 'I want a refund for ord_1001' })
+        .expect(200);
+      return parseEvents(res.text);
+    };
+
+    it('POST /chat stores a delivered order inside the window as pending_approval', async () => {
+      fetchMock.mockResolvedValue(Response.json(deliveredOrder(5)));
+
+      const events = await requestRefund();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'final',
+        data: {
+          route: 'refund',
+          refund: { id: 'ref_e2e', status: 'pending_approval' },
+          threadId: expect.stringMatching(UUID),
+        },
+      });
+      expect(createRefund).toHaveBeenCalledWith(
+        expect.objectContaining({
+          customerId: 'cus_ana',
+          orderId: 'ord_1001',
+          amount: '89.90',
+          status: 'pending_approval',
+        }),
+      );
+    });
+
+    it('POST /chat auto-rejects an order delivered outside the window', async () => {
+      createRefund.mockImplementation(async (input) => ({
+        ok: true,
+        refund: { id: 'ref_e2e', status: input.status },
+      }));
+      fetchMock.mockResolvedValue(Response.json(deliveredOrder(90)));
+
+      const events = await requestRefund();
+
+      expect(events[0]).toMatchObject({
+        type: 'final',
+        data: { route: 'refund', refund: { status: 'auto_rejected' } },
+      });
+      expect(createRefund).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'auto_rejected',
+          decisionReason: 'window_expired',
+        }),
+      );
     });
   });
 

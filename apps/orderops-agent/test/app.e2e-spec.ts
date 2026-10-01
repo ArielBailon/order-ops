@@ -20,11 +20,14 @@ describe('gateway auth (e2e)', () => {
       await import('../src/faq/policy-store.js');
     const { CHECKPOINTER } = await import('../src/memory/checkpointer.js');
     const { USER_MEMORY } = await import('../src/memory/user-memory.store.js');
+    const { REFUND_STORE } = await import('../src/refunds/refund.store.js');
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(CHECKPOINTER)
       .useValue(new MemorySaver())
+      .overrideProvider(REFUND_STORE)
+      .useValue({})
       .overrideProvider(USER_MEMORY)
       .useValue({})
       .overrideProvider(EMBEDDINGS)

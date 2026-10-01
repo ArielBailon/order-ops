@@ -5,6 +5,7 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { buildAgentGraph, type CallerConfig } from '../agent/agent.graph.js';
 import { FaqService } from '../faq/faq.service.js';
 import { CHECKPOINTER } from '../memory/checkpointer.js';
+import { REFUND_STORE, type RefundStore } from '../refunds/refund.store.js';
 import {
   USER_MEMORY,
   type UserMemoryStore,
@@ -42,6 +43,7 @@ export class ChatService {
     faq: FaqService,
     @Inject(CHECKPOINTER) checkpointer: BaseCheckpointSaver,
     @Inject(USER_MEMORY) memory: UserMemoryStore,
+    @Inject(REFUND_STORE) refunds: RefundStore,
   ) {
     this.graph = buildAgentGraph({
       model,
@@ -49,6 +51,7 @@ export class ChatService {
       faq,
       checkpointer,
       memory,
+      refunds,
     });
   }
 

@@ -15,8 +15,10 @@ import type { OrdersClient } from '../chat/orders.client.js';
 import type { FaqService } from '../faq/faq.service.js';
 import { extractFacts, factsMessages, mergeFacts } from '../memory/facts.js';
 import type { UserMemoryStore } from '../memory/user-memory.store.js';
+import type { RefundStore } from '../refunds/refund.store.js';
 import { compactHistory, withSummary } from './compaction.js';
 import { runOrderRoute } from './order-route.js';
+import { runRefundRoute } from './refund-route.js';
 import { classifyIntent } from './router.js';
 
 export const OUT_OF_SCOPE_ANSWER =
@@ -51,6 +53,9 @@ export interface AgentDeps {
   faq: Pick<FaqService, 'answer'>;
   checkpointer: BaseCheckpointSaver;
   memory: UserMemoryStore;
+  refunds: RefundStore;
+  /** Clock for the refund window; tests inject a fixed time. */
+  now?: () => Date;
 }
 
 const logger = new Logger('AgentGraph');
@@ -62,6 +67,8 @@ export function buildAgentGraph({
   faq,
   checkpointer,
   memory,
+  refunds,
+  now = () => new Date(),
 }: AgentDeps) {
   const emitter = (config: LangGraphRunnableConfig) => (event: AgentEvent) =>
     config.writer?.(event);
@@ -113,6 +120,24 @@ export function buildAgentGraph({
       emit({ type: 'final', data: reply });
       return answered(reply.answer);
     })
+    .addNode('refund', async (state: State, config) => {
+      const emit = emitter(config);
+      const { token, customerId } = callerOf(config);
+      const reply = await runRefundRoute({
+        model,
+        orders,
+        refunds,
+        message: state.message,
+        history: await historyOf(state, config),
+        token,
+        customerId,
+        signal: signalOf(config),
+        emit,
+        now,
+      });
+      emit({ type: 'final', data: reply });
+      return answered(reply.answer);
+    })
     .addNode('out_of_scope', (_state: State, config) => {
       emitter(config)({
         type: 'final',
@@ -157,10 +182,12 @@ export function buildAgentGraph({
     .addConditionalEdges('router', (state: State) => state.route, [
       'faq',
       'order',
+      'refund',
       'out_of_scope',
     ])
     .addEdge('faq', 'remember')
     .addEdge('order', 'remember')
+    .addEdge('refund', 'remember')
     .addEdge('out_of_scope', 'compact')
     .addEdge('remember', 'compact')
     .addEdge('compact', END)
