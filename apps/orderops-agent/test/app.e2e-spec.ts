@@ -47,7 +47,7 @@ describe('gateway auth (e2e)', () => {
   beforeEach(() => fetchMock.mockReset());
 
   it('POST /auth/login returns a bearer token', async () => {
-    fetchMock.mockResolvedValue(Response.json({ customerId: 'cus_ana' }));
+    fetchMock.mockResolvedValue(Response.json({ customerId: 'cus_ana', role: 'customer' }));
     const res = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ email: 'ana@example.com', password: 'pw' })

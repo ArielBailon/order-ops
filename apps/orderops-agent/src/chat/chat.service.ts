@@ -1,11 +1,16 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { HumanMessage } from '@langchain/core/messages';
-import type { BaseCheckpointSaver } from '@langchain/langgraph';
+import { AIMessage, HumanMessage } from '@langchain/core/messages';
+import { Command, type BaseCheckpointSaver } from '@langchain/langgraph';
 import { buildAgentGraph, type CallerConfig } from '../agent/agent.graph.js';
 import { FaqService } from '../faq/faq.service.js';
+import { REFUND_REPLIES } from '../agent/refund-route.js';
 import { CHECKPOINTER } from '../memory/checkpointer.js';
-import { REFUND_STORE, type RefundStore } from '../refunds/refund.store.js';
+import {
+  type Decision,
+  REFUND_STORE,
+  type RefundStore,
+} from '../refunds/refund.store.js';
 import {
   USER_MEMORY,
   type UserMemoryStore,
@@ -26,6 +31,13 @@ export interface ChatTurn {
   token: string;
   customerId: string;
   threadId: string;
+}
+
+export class RefundNotPausedError extends Error {
+  constructor() {
+    super('thread is not paused on this refund request');
+    this.name = 'RefundNotPausedError';
+  }
 }
 
 /** The customer id comes from the verified JWT, so a client can only reach its own threads. */
@@ -53,6 +65,56 @@ export class ChatService {
       memory,
       refunds,
     });
+  }
+
+  /**
+   * Records an operator decision in the conversation. Only the pause node runs, so no model
+   * call or customer token is needed. A thread paused on this exact request is resumed. A
+   * thread that has moved on (the customer wrote again, which cancels the pause) gets the
+   * same fixed message appended directly, because the stored row names its thread. A thread
+   * paused on another request (a customer can file several in one thread) is refused with
+   * `RefundNotPausedError`; callers treat any failure as non-fatal because the stored
+   * decision is the source of truth.
+   */
+  async resumeRefund(
+    threadKey: string,
+    customerId: string,
+    refund: { id: string; orderId: string; amount: string },
+    decision: Decision,
+  ): Promise<void> {
+    const configurable: CallerConfig = {
+      token: '',
+      customerId,
+      thread_id: threadKey,
+    };
+    const state = await this.graph.getState({ configurable });
+    if (state.next.includes('await_approval')) {
+      if (state.values.pendingRefund?.id !== refund.id)
+        throw new RefundNotPausedError();
+      await this.graph.invoke(
+        new Command({ resume: { refundId: refund.id, decision } }),
+        { configurable },
+      );
+      return;
+    }
+    // A thread with no messages never ran. Any other thread is not waiting on an approval:
+    // it finished, or its run was cut off before the pause (the client closed the stream
+    // after `final`), which leaves a stale `next` that nothing will ever run.
+    if (!state.values.messages?.length) throw new RefundNotPausedError();
+    const text =
+      decision === 'approved'
+        ? REFUND_REPLIES.approved
+        : REFUND_REPLIES.declined;
+    await this.graph.updateState(
+      { configurable },
+      {
+        messages: [
+          new AIMessage(text(refund.id, refund.amount, refund.orderId)),
+        ],
+        pendingRefund: null,
+      },
+      'await_approval',
+    );
   }
 
   /** Answers one message; always ends with exactly one `final` or `error` event. */

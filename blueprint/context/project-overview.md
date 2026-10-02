@@ -1,6 +1,6 @@
 # OrderOps Agent - Project Overview
 
-<!-- blueprint:source-hash 0ecdd267f43649d06afaaac5750970e23846bf813263dc5df82ba5c3da35ca8a -->
+<!-- blueprint:source-hash 1217d68e5db8ad3548dbcc8940783c0b237e42c98e1c65d6ce5b5801d4a9db7b -->
 
 > A support and operations agent for a fictional e-commerce store (NestJS + LangChain.js + LangGraph.js), built as a guided, deliberately scoped learning and portfolio project for production agentic patterns.
 

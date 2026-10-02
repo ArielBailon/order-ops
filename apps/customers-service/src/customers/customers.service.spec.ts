@@ -14,14 +14,21 @@ describe('CustomersService', () => {
   beforeEach(() => findUnique.mockReset());
 
   describe('verifyCredentials', () => {
-    it('returns the customer id for valid credentials', async () => {
-      findUnique.mockResolvedValue({ id: 'cus_ana', passwordHash });
+    it('returns the customer id and role for valid credentials', async () => {
+      findUnique.mockResolvedValue({ id: 'cus_ana', role: 'customer', passwordHash });
       await expect(
         service.verifyCredentials({ email: 'ana@example.com', password: 'right-password' }),
-      ).resolves.toBe('cus_ana');
+      ).resolves.toEqual({ id: 'cus_ana', role: 'customer' });
       expect(findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { email: 'ana@example.com' } }),
       );
+    });
+
+    it('returns the operator role for an operator', async () => {
+      findUnique.mockResolvedValue({ id: 'op_sam', role: 'operator', passwordHash });
+      await expect(
+        service.verifyCredentials({ email: 'operator@example.com', password: 'right-password' }),
+      ).resolves.toEqual({ id: 'op_sam', role: 'operator' });
     });
 
     it('returns null for a wrong password', async () => {

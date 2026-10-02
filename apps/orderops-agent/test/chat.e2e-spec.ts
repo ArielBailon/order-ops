@@ -65,6 +65,8 @@ describe('gateway chat (e2e)', () => {
       .useValue({
         findOpenForOrder: async () => null,
         create: createRefund,
+        decide: async () => ({ ok: false, code: 'not_found' }),
+        listPending: async () => [],
       })
       .overrideProvider(USER_MEMORY)
       .useValue({
@@ -313,8 +315,13 @@ describe('gateway chat (e2e)', () => {
 
       const events = await requestRefund();
 
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
+      expect(events.map((e) => e.type)).toEqual(['approval_required', 'final']);
+      expect(events[0].data).toEqual({
+        refundId: 'ref_e2e',
+        orderId: 'ord_1001',
+        amount: '89.90',
+      });
+      expect(events[1]).toMatchObject({
         type: 'final',
         data: {
           route: 'refund',

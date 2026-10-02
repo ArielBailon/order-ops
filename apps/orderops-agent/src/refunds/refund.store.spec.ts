@@ -2,7 +2,13 @@ import type { PrismaService } from '@app/prisma';
 import { PrismaRefundStore } from './refund.store.js';
 
 describe('PrismaRefundStore', () => {
-  const refundRequest = { create: vi.fn(), findFirst: vi.fn() };
+  const refundRequest = {
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    updateMany: vi.fn(),
+  };
   const store = new PrismaRefundStore({
     refundRequest,
   } as unknown as PrismaService);
@@ -121,6 +127,141 @@ describe('PrismaRefundStore', () => {
     expect(await store.findOpenForOrder('ord_1')).toEqual({
       id: 'ref_1',
       status: 'pending_approval',
+    });
+  });
+
+  it('writes the thread key on create', async () => {
+    await store.create({ ...pending, threadKey: 'cus_ana:thread-1' });
+    expect(refundRequest.create.mock.calls[0][0].data.threadKey).toBe(
+      'cus_ana:thread-1',
+    );
+  });
+
+  describe('decide', () => {
+    const row = (overrides = {}) => ({
+      id: 'ref_1',
+      orderId: 'ord_1',
+      customerId: 'cus_ana',
+      amount: { toFixed: () => '89.90' },
+      status: 'pending_approval',
+      threadKey: 'cus_ana:thread-1',
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      refundRequest.updateMany.mockReset();
+      refundRequest.findUnique.mockReset();
+    });
+
+    it('decides a pending request in one conditional update that excludes the operator own requests', async () => {
+      refundRequest.updateMany.mockResolvedValue({ count: 1 });
+      refundRequest.findUnique.mockResolvedValue(row({ status: 'approved' }));
+
+      const result = await store.decide({
+        id: 'ref_1',
+        decision: 'approved',
+        operatorId: 'op_sam',
+      });
+
+      expect(refundRequest.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'ref_1',
+          status: 'pending_approval',
+          customerId: { not: 'op_sam' },
+        },
+        data: { status: 'approved', decidedBy: 'op_sam' },
+      });
+      expect(result).toEqual({
+        ok: true,
+        refund: {
+          id: 'ref_1',
+          orderId: 'ord_1',
+          customerId: 'cus_ana',
+          amount: '89.90',
+          status: 'approved',
+          threadKey: 'cus_ana:thread-1',
+        },
+      });
+    });
+
+    it('records a rejection', async () => {
+      refundRequest.updateMany.mockResolvedValue({ count: 1 });
+      refundRequest.findUnique.mockResolvedValue(row({ status: 'rejected' }));
+      const result = await store.decide({
+        id: 'ref_1',
+        decision: 'rejected',
+        operatorId: 'op_sam',
+      });
+      expect(refundRequest.updateMany.mock.calls[0][0].data).toEqual({
+        status: 'rejected',
+        decidedBy: 'op_sam',
+      });
+      expect(result).toMatchObject({ ok: true, refund: { status: 'rejected' } });
+    });
+
+    it('reports an unknown id as not_found', async () => {
+      refundRequest.updateMany.mockResolvedValue({ count: 0 });
+      refundRequest.findUnique.mockResolvedValue(null);
+      await expect(
+        store.decide({ id: 'nope', decision: 'approved', operatorId: 'op_sam' }),
+      ).resolves.toEqual({ ok: false, code: 'not_found' });
+    });
+
+    it.each(['approved', 'rejected', 'auto_rejected'])(
+      'reports an already %s request as not_pending',
+      async (status) => {
+        refundRequest.updateMany.mockResolvedValue({ count: 0 });
+        refundRequest.findUnique.mockResolvedValue(row({ status }));
+        await expect(
+          store.decide({
+            id: 'ref_1',
+            decision: 'approved',
+            operatorId: 'op_sam',
+          }),
+        ).resolves.toEqual({ ok: false, code: 'not_pending' });
+      },
+    );
+
+    it('reports a still pending request that was not updated as own_request', async () => {
+      refundRequest.updateMany.mockResolvedValue({ count: 0 });
+      refundRequest.findUnique.mockResolvedValue(
+        row({ customerId: 'op_sam' }),
+      );
+      await expect(
+        store.decide({ id: 'ref_1', decision: 'approved', operatorId: 'op_sam' }),
+      ).resolves.toEqual({ ok: false, code: 'own_request' });
+    });
+  });
+
+  describe('listPending', () => {
+    it('returns only pending requests, oldest first, with two-decimal amounts and ISO dates', async () => {
+      refundRequest.findMany.mockResolvedValue([
+        {
+          id: 'ref_1',
+          orderId: 'ord_1',
+          customerId: 'cus_ana',
+          amount: { toFixed: () => '89.90' },
+          reason: 'Arrived broken',
+          createdAt: new Date('2026-10-01T10:00:00Z'),
+        },
+      ]);
+
+      const result = await store.listPending();
+
+      expect(refundRequest.findMany.mock.calls[0][0]).toMatchObject({
+        where: { status: 'pending_approval' },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(result).toEqual([
+        {
+          id: 'ref_1',
+          orderId: 'ord_1',
+          customerId: 'cus_ana',
+          amount: '89.90',
+          reason: 'Arrived broken',
+          createdAt: '2026-10-01T10:00:00.000Z',
+        },
+      ]);
     });
   });
 });

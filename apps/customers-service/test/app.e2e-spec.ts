@@ -23,6 +23,7 @@ describe('customers-service (e2e)', () => {
         name: 'Ana Torres',
         email: 'ana@example.com',
         tier: 'premium',
+        role: 'customer',
         passwordHash: await hashPassword('pw'),
       },
     ];
@@ -51,11 +52,11 @@ describe('customers-service (e2e)', () => {
     await app.close();
   });
 
-  it('POST /auth/verify-credentials returns the customer id', () =>
+  it('POST /auth/verify-credentials returns the customer id and role', () =>
     request(app.getHttpServer())
       .post('/auth/verify-credentials')
       .send({ email: 'ANA@example.com', password: 'pw' })
-      .expect(200, { customerId: 'cus_ana' }));
+      .expect(200, { customerId: 'cus_ana', role: 'customer' }));
 
   it('POST /auth/verify-credentials rejects bad credentials with a generic 401', async () => {
     const wrong = await request(app.getHttpServer())

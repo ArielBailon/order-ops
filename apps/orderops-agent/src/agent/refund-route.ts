@@ -57,6 +57,11 @@ export const REFUND_REPLIES = {
     'The order system is temporarily unavailable, so I could not check your order. Please try again in a moment.',
   submitted: (id: string, amount: string, orderId: string) =>
     `I have submitted refund request ${id} for ${amount} USD on order ${orderId}. It is now waiting for review by our team.`,
+  /** Recorded in the thread when an operator decides; never model output. */
+  approved: (id: string, amount: string, orderId: string) =>
+    `Update on refund request ${id}: our team approved your refund of ${amount} USD for order ${orderId}.`,
+  declined: (id: string, amount: string, orderId: string) =>
+    `Update on refund request ${id}: our team declined your refund of ${amount} USD for order ${orderId}.`,
   duplicate: (id: string, orderId: string) =>
     `Order ${orderId} already has a refund request waiting for review (${id}). I have not created another one.`,
   rejected: (
@@ -88,6 +93,8 @@ export interface RefundRouteInput {
   history: BaseMessage[];
   token: string;
   customerId: string;
+  /** Checkpoint thread key, stored so an operator decision can resume this thread. */
+  threadKey: string;
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
   now: () => Date;
@@ -111,7 +118,8 @@ const reply = (
 export async function runRefundRoute(
   input: RefundRouteInput,
 ): Promise<FinalReply> {
-  const { orders, refunds, token, customerId, signal, now } = input;
+  const { orders, refunds, token, customerId, threadKey, signal, now, emit } =
+    input;
 
   let proposal: RefundProposal;
   try {
@@ -160,14 +168,19 @@ export async function runRefundRoute(
       amount,
       reason: proposal.reason,
       status: 'pending_approval',
+      threadKey,
     });
-    return created.ok
-      ? reply(
-          REFUND_REPLIES.submitted(created.refund.id, amount, order.id),
-          [order.id],
-          created.refund,
-        )
-      : duplicate(order.id, created.existing);
+    if (!created.ok) return duplicate(order.id, created.existing);
+    // Only a newly stored request waits for an operator; the graph pauses after this turn.
+    emit({
+      type: 'approval_required',
+      data: { refundId: created.refund.id, orderId: order.id, amount },
+    });
+    return reply(
+      REFUND_REPLIES.submitted(created.refund.id, amount, order.id),
+      [order.id],
+      created.refund,
+    );
   }
   // `evaluateRefund` returns this code only when `open` was found above.
   if (verdict.code === 'open_request_exists')

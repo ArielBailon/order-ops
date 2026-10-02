@@ -7,9 +7,10 @@ import { hashPassword } from '../libs/auth/src/password.js';
 const SEED_PASSWORD = 'orderops-dev-password';
 
 const customers = [
-  { id: 'cus_ana', name: 'Ana Torres', email: 'ana@example.com', tier: 'premium' },
-  { id: 'cus_ben', name: 'Ben Carter', email: 'ben@example.com', tier: 'standard' },
-  { id: 'cus_cora', name: 'Cora Diaz', email: 'cora@example.com', tier: 'standard' },
+  { id: 'cus_ana', name: 'Ana Torres', email: 'ana@example.com', tier: 'premium', role: 'customer' },
+  { id: 'cus_ben', name: 'Ben Carter', email: 'ben@example.com', tier: 'standard', role: 'customer' },
+  { id: 'cus_cora', name: 'Cora Diaz', email: 'cora@example.com', tier: 'standard', role: 'customer' },
+  { id: 'op_sam', name: 'Sam Operator', email: 'operator@example.com', tier: 'standard', role: 'operator' },
 ] as const;
 
 const orders = [

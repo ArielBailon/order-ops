@@ -46,9 +46,18 @@ export type ToolName = 'list_orders' | 'get_order';
 
 export type ChatErrorCode = 'agent_error' | 'invalid_output';
 
+/** Sent once, right before `final`, when a new refund request waits for an operator. */
+export interface ApprovalRequired {
+  refundId: string;
+  orderId: string;
+  /** Money string with two decimals, for example "89.90". */
+  amount: string;
+}
+
 /** Events graph nodes stream; the service adds the thread id to `final`. */
 export type AgentEvent =
   | { type: 'token'; data: { text: string } }
+  | { type: 'approval_required'; data: ApprovalRequired }
   | {
       type: 'tool_call';
       data: { name: ToolName; args: Record<string, unknown> };
@@ -56,7 +65,7 @@ export type AgentEvent =
   | { type: 'final'; data: FinalReply }
   | { type: 'error'; data: { code: ChatErrorCode; message: string } };
 
-/** SSE events streamed by POST /chat. `approval_required` is reserved for item 4. */
+/** SSE events streamed by POST /chat. `approval_required` precedes `final` when a refund waits for an operator. */
 export type ChatEvent =
   | Exclude<AgentEvent, { type: 'final' }>
   | { type: 'final'; data: FinalReply & { threadId: string } };

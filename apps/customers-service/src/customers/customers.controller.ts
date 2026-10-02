@@ -15,6 +15,7 @@ import {
   JwtAuthGuard,
   ZodValidationPipe,
 } from '@app/auth';
+import type { UserRole } from '@app/prisma';
 import { type CustomerProfile, CustomersService } from './customers.service.js';
 
 @Controller()
@@ -25,10 +26,10 @@ export class CustomersController {
   @HttpCode(200)
   async verifyCredentials(
     @Body(new ZodValidationPipe(credentialsSchema)) credentials: Credentials,
-  ): Promise<{ customerId: string }> {
-    const customerId = await this.customers.verifyCredentials(credentials);
-    if (!customerId) throw new UnauthorizedException('Invalid credentials');
-    return { customerId };
+  ): Promise<{ customerId: string; role: UserRole }> {
+    const verified = await this.customers.verifyCredentials(credentials);
+    if (!verified) throw new UnauthorizedException('Invalid credentials');
+    return { customerId: verified.id, role: verified.role };
   }
 
   @Get('customers/me')

@@ -45,6 +45,8 @@ describe('runRefundRoute', () => {
   const refunds = {
     findOpenForOrder: vi.fn(),
     create: vi.fn(),
+    decide: vi.fn(),
+    listPending: vi.fn(),
   } satisfies RefundStore;
   const emit = vi.fn<(event: AgentEvent) => void>();
   const signal = new AbortController().signal;
@@ -61,6 +63,7 @@ describe('runRefundRoute', () => {
       history: [],
       token: 'tok',
       customerId: 'cus_ana',
+      threadKey: 'cus_ana:thread-1',
       signal,
       emit,
       now: () => NOW,
@@ -94,6 +97,7 @@ describe('runRefundRoute', () => {
       amount: '20.50',
       reason: 'Arrived broken',
       status: 'pending_approval',
+      threadKey: 'cus_ana:thread-1',
     });
     expect(result).toEqual({
       answer: REFUND_REPLIES.submitted('ref_new', '20.50', 'ord_1001'),
@@ -293,4 +297,37 @@ describe('runRefundRoute', () => {
     expect(reply.answer).toBe(REFUND_REPLIES.agentFallback);
     expect(refunds.create).not.toHaveBeenCalled();
   });
+
+  it('asks for approval once, right before returning, only for a newly stored request', async () => {
+    await run([proposal({ amount: '20.5' })]);
+
+    expect(emit.mock.calls.map(([event]) => event)).toEqual([
+      {
+        type: 'approval_required',
+        data: { refundId: 'ref_new', orderId: 'ord_1001', amount: '20.50' },
+      },
+    ]);
+  });
+
+  it('does not ask for approval for an auto_rejected, duplicate, or unstored request', async () => {
+    await run([proposal({ amount: '100.00' })]);
+    refunds.findOpenForOrder.mockResolvedValue({
+      id: 'ref_open',
+      status: 'pending_approval',
+    });
+    await run([proposal()]);
+    refunds.findOpenForOrder.mockResolvedValue(null);
+    refunds.create.mockResolvedValue({
+      ok: false,
+      code: 'open_request_exists',
+      existing: { id: 'ref_race', status: 'pending_approval' },
+    });
+    await run([proposal()]);
+    await run([proposal({ orderId: null })]);
+
+    expect(emit.mock.calls.map(([event]) => event.type)).not.toContain(
+      'approval_required',
+    );
+  });
 });
+

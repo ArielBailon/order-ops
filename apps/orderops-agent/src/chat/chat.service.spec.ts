@@ -7,7 +7,13 @@ import {
 import { OutputParserException } from '@langchain/core/output_parsers';
 import { MemorySaver } from '@langchain/langgraph';
 import type { ChatEvent } from './chat.schemas.js';
-import { type ChatTurn, ChatService, threadKey } from './chat.service.js';
+import { REFUND_REPLIES } from '../agent/refund-route.js';
+import {
+  type ChatTurn,
+  ChatService,
+  RefundNotPausedError,
+  threadKey,
+} from './chat.service.js';
 import { ORDER_FIXTURE } from './order.fixture.js';
 import type { FaqService } from '../faq/faq.service.js';
 import type { RefundStore } from '../refunds/refund.store.js';
@@ -97,13 +103,8 @@ describe('ChatService', () => {
   const refunds = { findOpenForOrder: vi.fn(), create: vi.fn() };
   const signal = new AbortController().signal;
 
-  const run = async (
-    model: FakeChatModel,
-    message = 'where is my order?',
-    requestSignal = signal,
-    turn: Partial<ChatTurn> = {},
-  ) => {
-    const service = new ChatService(
+  const makeService = (model: FakeChatModel) =>
+    new ChatService(
       model as unknown as BaseChatModel,
       orders as unknown as OrdersClient,
       faq as unknown as FaqService,
@@ -111,6 +112,14 @@ describe('ChatService', () => {
       memory,
       refunds as unknown as RefundStore,
     );
+
+  const run = async (
+    model: FakeChatModel,
+    message = 'where is my order?',
+    requestSignal = signal,
+    turn: Partial<ChatTurn> = {},
+    service = makeService(model),
+  ) => {
     const events: ChatEvent[] = [];
     for await (const event of service.reply(
       {
@@ -363,8 +372,8 @@ describe('ChatService', () => {
 
       const events = await run(model, 'I want a refund for ord_1001');
 
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
+      expect(events.map((e) => e.type)).toEqual(['approval_required', 'final']);
+      expect(events[1]).toMatchObject({
         type: 'final',
         data: {
           route: 'refund',
@@ -381,6 +390,232 @@ describe('ChatService', () => {
           status: 'pending_approval',
         }),
       );
+    });
+
+    describe('operator approval pause', () => {
+      const KEY = threadKey(CUSTOMER, THREAD);
+      const pendingModel = () =>
+        new FakeChatModel(
+          [[text('ok')]],
+          [{ orderId: 'ord_1001', amount: null, reason: 'Arrived broken' }],
+          [{ intent: 'refund' }],
+        );
+      const arrange = () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
+        orders.getOrder.mockResolvedValue({
+          ok: true,
+          data: {
+            ...ORDER_FIXTURE,
+            total: '89.90',
+            status: 'delivered',
+            deliveredAt: '2026-08-06T16:30:00.000Z',
+          },
+        });
+      };
+      const NEW_REFUND = {
+        id: 'ref_new',
+        orderId: 'ord_1001',
+        amount: '89.90',
+      };
+      /** Nodes still waiting to run for the thread; empty when the run finished. */
+      const nextNodes = async (service: ChatService) =>
+        (
+          await (
+            service as unknown as {
+              graph: {
+                getState: (c: unknown) => Promise<{ next: string[] }>;
+              };
+            }
+          ).graph.getState({ configurable: { thread_id: KEY } })
+        ).next;
+      const lastMessage = async () => {
+        const tuple = await saver.getTuple({
+          configurable: { thread_id: KEY },
+        });
+        const messages = tuple!.checkpoint.channel_values
+          .messages as BaseMessage[];
+        return messages.at(-1)!.content;
+      };
+
+      it('pauses at the approval node after a new pending request', async () => {
+        arrange();
+        const service = makeService(pendingModel());
+
+        const events = await run(
+          pendingModel(),
+          'refund ord_1001',
+          signal,
+          {},
+          service,
+        );
+
+        expect(events[0]).toEqual({
+          type: 'approval_required',
+          data: { refundId: 'ref_new', orderId: 'ord_1001', amount: '89.90' },
+        });
+        expect(events.at(-1)!.type).toBe('final');
+        expect(await nextNodes(service)).toEqual(['await_approval']);
+        expect(refunds.create).toHaveBeenCalledWith(
+          expect.objectContaining({ threadKey: KEY }),
+        );
+      });
+
+      it.each([
+        ['approved', REFUND_REPLIES.approved('ref_new', '89.90', 'ord_1001')],
+        ['rejected', REFUND_REPLIES.declined('ref_new', '89.90', 'ord_1001')],
+      ] as const)(
+        'records a %s decision as a fixed message in the thread',
+        async (decision, expected) => {
+          arrange();
+          const service = makeService(pendingModel());
+          await run(pendingModel(), 'refund ord_1001', signal, {}, service);
+
+          await service.resumeRefund(KEY, CUSTOMER, NEW_REFUND, decision);
+
+          expect(await lastMessage()).toBe(expected);
+          expect(await nextNodes(service)).toEqual([]);
+        },
+      );
+
+      it('lets the customer keep chatting on a thread that is still paused', async () => {
+        arrange();
+        await run(pendingModel(), 'refund ord_1001');
+
+        const events = await run(
+          new FakeChatModel([[text('hi')]]),
+          'where is my order?',
+        );
+
+        expect(events.at(-1)).toMatchObject({
+          type: 'final',
+          data: { route: 'order' },
+        });
+      });
+
+      it('appends the decision message when the customer wrote again before the decision', async () => {
+        arrange();
+        // One scripted model serves both turns because the service keeps it.
+        const model = new FakeChatModel(
+          [[text('ok')]],
+          [{ orderId: 'ord_1001', amount: null, reason: 'Arrived broken' }],
+          [{ intent: 'refund' }, { intent: 'out_of_scope' }],
+        );
+        const service = makeService(model);
+        await run(model, 'refund ord_1001', signal, {}, service);
+        await run(model, 'thanks', signal, {}, service);
+        expect(await nextNodes(service)).toEqual([]);
+
+        await service.resumeRefund(KEY, CUSTOMER, NEW_REFUND, 'approved');
+
+        expect(await lastMessage()).toBe(
+          REFUND_REPLIES.approved('ref_new', '89.90', 'ord_1001'),
+        );
+        expect(await nextNodes(service)).toEqual([]);
+      });
+
+      it('appends the decision message when the client closed the stream after final', async () => {
+        arrange();
+        const service = makeService(pendingModel());
+        const abort = new AbortController();
+        for await (const event of service.reply(
+          {
+            message: 'refund ord_1001',
+            token: 'tok',
+            customerId: CUSTOMER,
+            threadId: THREAD,
+          },
+          abort.signal,
+        ))
+          if (event.type === 'final') abort.abort();
+        // The cut-off run never reached the pause and left a stale step behind.
+        const next = await nextNodes(service);
+        expect(next).not.toEqual([]);
+        expect(next).not.toContain('await_approval');
+
+        await service.resumeRefund(KEY, CUSTOMER, NEW_REFUND, 'approved');
+
+        expect(await lastMessage()).toBe(
+          REFUND_REPLIES.approved('ref_new', '89.90', 'ord_1001'),
+        );
+      });
+
+      it('refuses a decision for a thread that never ran', async () => {
+        const service = makeService(pendingModel());
+
+        await expect(
+          service.resumeRefund(KEY, CUSTOMER, NEW_REFUND, 'approved'),
+        ).rejects.toBeInstanceOf(RefundNotPausedError);
+      });
+
+      it('records a decision only against the request the thread is paused on', async () => {
+        arrange();
+        const proposal = {
+          orderId: 'ord_1001',
+          amount: null,
+          reason: 'Arrived broken',
+        };
+        // One scripted model serves both turns because the service keeps it.
+        const model = new FakeChatModel(
+          [[text('ok')], [text('ok')]],
+          [proposal, proposal],
+          [{ intent: 'refund' }, { intent: 'refund' }],
+        );
+        const service = makeService(model);
+        await run(model, 'refund ord_1001', signal, {}, service);
+        // The customer files a second request in the same thread; it replaces the first pause.
+        refunds.create.mockResolvedValue({
+          ok: true,
+          refund: { id: 'ref_b', status: 'pending_approval' },
+        });
+        await run(model, 'refund ord_1001 again', signal, {}, service);
+        const before = await lastMessage();
+
+        await expect(
+          service.resumeRefund(KEY, CUSTOMER, NEW_REFUND, 'approved'),
+        ).rejects.toBeInstanceOf(RefundNotPausedError);
+        expect(await lastMessage()).toBe(before);
+
+        await service.resumeRefund(
+          KEY,
+          CUSTOMER,
+          { ...NEW_REFUND, id: 'ref_b' },
+          'rejected',
+        );
+        expect(await lastMessage()).toBe(
+          REFUND_REPLIES.declined('ref_b', '89.90', 'ord_1001'),
+        );
+      });
+
+      it.each([
+        [
+          'an auto-rejected request',
+          { ok: true, refund: { id: 'ref_new', status: 'auto_rejected' } },
+          null,
+          '100.00',
+        ],
+        [
+          'a duplicate open request',
+          { ok: true, refund: { id: 'ref_new', status: 'pending_approval' } },
+          { id: 'ref_open', status: 'pending_approval' },
+          null,
+        ],
+      ])('does not pause for %s', async (_label, created, open, amount) => {
+        arrange();
+        refunds.create.mockResolvedValue(created);
+        refunds.findOpenForOrder.mockResolvedValue(open);
+        const model = new FakeChatModel(
+          [[text('ok')]],
+          [{ orderId: 'ord_1001', amount, reason: 'Arrived broken' }],
+          [{ intent: 'refund' }],
+        );
+        const service = makeService(model);
+
+        const events = await run(model, 'refund ord_1001', signal, {}, service);
+
+        expect(events.map((e) => e.type)).toEqual(['final']);
+        expect(await nextNodes(service)).toEqual([]);
+      });
     });
 
     it('answers with the fallback text, not an error event, when the agent fails', async () => {

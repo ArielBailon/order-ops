@@ -5,9 +5,9 @@
   - [x] 1b. SSE order chat - authenticated SSE chat endpoint where the agent answers "where is my order?" by calling orders-service via LangChain tool calling with the user's token, with Zod-validated structured output
 - [x] 2. Routed agent graph - LangGraph intent router with FAQ route (deterministic RAG over policy docs in pgvector), order route and out-of-scope refusal route
 - [x] 3. Conversational memory - multi-turn threads persisted with the Postgres checkpointer, long-term per-user memory, and context trimming/summarization
-- [ ] 4. Guarded refunds - refund requests with business rules enforced in code, output validation with bounded retry, human approval via interrupt(), and deterministic fallback on agent failure
+- [x] 4. Guarded refunds - refund requests with business rules enforced in code, output validation with bounded retry, human approval via interrupt(), and deterministic fallback on agent failure
   - [x] 4a. Refund rules and request route - RefundRequest storage in the gateway, business rules enforced in code (delivered order, 30-day window, amount <= total, no other open request), refund route in the graph with structured extraction, output validation with bounded retry, deterministic fallback when the agent fails, and pending_approval requests created
-  - [ ] 4b. Operator approval - operator identity, human approval via interrupt(), approve/reject endpoints that resume the thread, and the approval_required SSE event
+  - [x] 4b. Operator approval - operator identity, human approval via interrupt(), approve/reject endpoints that resume the thread, and the approval_required SSE event
 - [ ] 5. Multi-provider models - Anthropic, OpenAI and Bedrock behind one interface, cheap-vs-strong model routing, and provider failover
 - [ ] 6. Traces and cost - per-request tracing of agent decisions, tools, tokens, p95 latency and cost per conversation, plus prompt caching
 - [ ] 7. Regression evals - ~40-case eval dataset, tool/trajectory/answer/guardrail metrics, versioned results, CI workflow, and provider comparison table

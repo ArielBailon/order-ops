@@ -18,5 +18,6 @@ import { OrdersClient } from './orders.client.js';
   ],
   controllers: [ChatController],
   providers: [ChatService, OrdersClient],
+  exports: [ChatService],
 })
 export class ChatModule {}

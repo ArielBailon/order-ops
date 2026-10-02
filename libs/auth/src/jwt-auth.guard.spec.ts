@@ -24,7 +24,21 @@ describe('JwtAuthGuard', () => {
     const token = await jwt.signAsync({ sub: 'cus_ana' });
     const { context, request } = contextFor(`Bearer ${token}`);
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(request.customer).toEqual({ customerId: 'cus_ana' });
+    expect(request.customer).toEqual({ customerId: 'cus_ana', role: 'customer' });
+  });
+
+  it.each([
+    ['operator', 'operator'],
+    ['customer', 'customer'],
+    ['Operator', 'customer'],
+    ['admin', 'customer'],
+    [42, 'customer'],
+    [null, 'customer'],
+  ])('maps a role claim of %j to %s', async (claim, expected) => {
+    const token = await jwt.signAsync({ sub: 'cus_ana', role: claim });
+    const { context, request } = contextFor(`Bearer ${token}`);
+    await guard.canActivate(context);
+    expect(request.customer).toEqual({ customerId: 'cus_ana', role: expected });
   });
 
   it.each([

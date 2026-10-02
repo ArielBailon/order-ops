@@ -24,7 +24,10 @@ export class CustomersServiceUnavailableError extends Error {
   }
 }
 
-const verifiedSchema = z.object({ customerId: z.string().min(1) });
+const verifiedSchema = z.object({
+  customerId: z.string().min(1),
+  role: z.enum(['customer', 'operator']),
+});
 const UPSTREAM_TIMEOUT_MS = 5000;
 
 @Injectable()
@@ -40,15 +43,17 @@ export class LoginService {
   }
 
   async login(credentials: Credentials): Promise<LoginResponse> {
-    const customerId = await this.verifyCredentials(credentials);
+    const { customerId, role } = await this.verifyCredentials(credentials);
     return {
-      accessToken: await this.jwt.signAsync({ sub: customerId }),
+      accessToken: await this.jwt.signAsync({ sub: customerId, role }),
       tokenType: 'Bearer',
       expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     };
   }
 
-  private async verifyCredentials(credentials: Credentials): Promise<string> {
+  private async verifyCredentials(
+    credentials: Credentials,
+  ): Promise<z.infer<typeof verifiedSchema>> {
     let response: Response;
     try {
       response = await fetch(new URL('/auth/verify-credentials', this.customersServiceUrl), {
@@ -68,6 +73,6 @@ export class LoginService {
       this.logger.warn(`customers-service answered ${response.status} to verify-credentials`);
       throw new CustomersServiceUnavailableError();
     }
-    return body.data.customerId;
+    return body.data;
   }
 }

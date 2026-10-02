@@ -14,6 +14,11 @@ enum CustomerTier {
   premium
 }
 
+enum UserRole {
+  customer
+  operator
+}
+
 enum RefundStatus {
   pending_approval
   approved
@@ -34,6 +39,7 @@ model Customer {
   name         String
   email        String       @unique
   tier         CustomerTier @default(standard)
+  role         UserRole     @default(customer)
   passwordHash String
   createdAt    DateTime     @default(now())
   orders       Order[]
@@ -76,6 +82,8 @@ model RefundRequest {
   status         RefundStatus
   decidedBy      String?
   decisionReason String?
+  /// Checkpoint thread key (customerId:threadId) used to resume the paused chat thread; null before 4b.
+  threadKey      String?
   createdAt      DateTime     @default(now())
 
   @@index([customerId])

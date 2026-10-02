@@ -334,7 +334,19 @@ until the global npm is updated.
   event carries `refund: { id, status }` (`pending_approval` or `auto_rejected`)
   when a request was stored or an open one reused. Rules (delivered, within 30 days
   of delivery, amount <= order total, one open request per order) are enforced in
-  code; operator approval comes with feature 4b
+  code. A newly stored `pending_approval` request streams `approval_required`
+  (`{ refundId, orderId, amount }`) right before `final`, and its thread pauses
+  with `interrupt()` until an operator decides
+- Operators: seed operator `operator@example.com` (same dev password) logs in
+  through `/auth/login`; its token carries `role: "operator"`. Send it to
+  `GET :3000/refunds/pending` (reason is untrusted customer text),
+  `POST :3000/refunds/:id/approve` and `POST :3000/refunds/:id/reject`
+  (200 `{ id, status, decidedBy }`; 403 not an operator or own request, 404
+  unknown, 409 not pending). The decision is stored first, then the paused
+  thread is resumed so a fixed decision message lands in the conversation (if
+  the customer wrote again first, the same message is appended to the thread
+  instead, including when the client closed the stream early; a thread paused
+  on a different request is left alone)
 - Build: `npx nest build <app>` (`npm run build` builds only `orderops-agent`)
 - Production server (gateway): `npm run build && npm run start:prod`
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { type Credentials, hashPassword, verifyPassword } from '@app/auth';
-import { type CustomerTier, PrismaService } from '@app/prisma';
+import { type CustomerTier, PrismaService, type UserRole } from '@app/prisma';
 
 export interface CustomerProfile {
   id: string;
@@ -16,13 +16,16 @@ export class CustomersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async verifyCredentials({ email, password }: Credentials): Promise<string | null> {
+  async verifyCredentials({
+    email,
+    password,
+  }: Credentials): Promise<{ id: string; role: UserRole } | null> {
     const customer = await this.prisma.customer.findUnique({
       where: { email },
-      select: { id: true, passwordHash: true },
+      select: { id: true, role: true, passwordHash: true },
     });
     const valid = await verifyPassword(password, customer?.passwordHash ?? (await this.dummyHash));
-    return customer && valid ? customer.id : null;
+    return customer && valid ? { id: customer.id, role: customer.role } : null;
   }
 
   findProfile(customerId: string): Promise<CustomerProfile | null> {
