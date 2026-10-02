@@ -15,7 +15,7 @@ import { z } from 'zod';
 import type { AgentEvent, ChatRoute } from '../chat/chat.schemas.js';
 import type { OrdersClient } from '../chat/orders.client.js';
 import type { FaqService } from '../faq/faq.service.js';
-import { extractFacts, factsMessages, mergeFacts } from '../memory/facts.js';
+import { extractFacts, factsMessages } from '../memory/facts.js';
 import type { UserMemoryStore } from '../memory/user-memory.store.js';
 import type { RefundStore } from '../refunds/refund.store.js';
 import { compactHistory, withSummary } from './compaction.js';
@@ -189,10 +189,7 @@ export function buildAgentGraph({
       );
       if (added.length === 0) return {};
       try {
-        await memory.replace(
-          customerId,
-          mergeFacts(await memory.get(customerId), added),
-        );
+        await memory.add(customerId, added);
       } catch (error) {
         logger.warn(`memory write failed: ${(error as Error).name}`);
       }
@@ -230,7 +227,9 @@ export function buildAgentGraph({
       if (refundId !== pending.id)
         throw new Error('resume does not match the pending refund');
       const text =
-        decision === 'approved' ? REFUND_REPLIES.approved : REFUND_REPLIES.declined;
+        decision === 'approved'
+          ? REFUND_REPLIES.approved
+          : REFUND_REPLIES.declined;
       return {
         ...answered(text(pending.id, pending.amount, pending.orderId)),
         pendingRefund: null,

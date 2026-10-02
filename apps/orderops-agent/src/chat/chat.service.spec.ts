@@ -99,7 +99,7 @@ describe('ChatService', () => {
   let saver: MemorySaver;
   const orders = { listOrders: vi.fn(), getOrder: vi.fn() };
   const faq = { answer: vi.fn() };
-  const memory = { get: vi.fn(), replace: vi.fn() };
+  const memory = { get: vi.fn(), add: vi.fn() };
   const refunds = { findOpenForOrder: vi.fn(), create: vi.fn() };
   const signal = new AbortController().signal;
 
@@ -144,7 +144,7 @@ describe('ChatService', () => {
   beforeEach(() => {
     saver = new MemorySaver();
     memory.get.mockReset().mockResolvedValue([]);
-    memory.replace.mockReset().mockResolvedValue(undefined);
+    memory.add.mockReset().mockResolvedValue(undefined);
     refunds.findOpenForOrder.mockReset().mockResolvedValue(null);
     refunds.create.mockReset().mockResolvedValue({
       ok: true,
@@ -951,7 +951,7 @@ describe('ChatService', () => {
       }
     });
 
-    it('stores new facts merged with the stored ones, scoped to the caller', async () => {
+    it('hands the new facts to the store, scoped to the caller', async () => {
       memory.get.mockResolvedValue(['prefers email contact.']);
       const model = new FakeChatModel([[text('Hi.')]], undefined, undefined, [
         { facts: ['Prefers email contact.', 'Dislikes phone calls.'] },
@@ -959,8 +959,8 @@ describe('ChatService', () => {
 
       await ran(model, { customerId: 'cus_ben' });
 
-      expect(memory.replace).toHaveBeenCalledWith('cus_ben', [
-        'prefers email contact.',
+      expect(memory.add).toHaveBeenCalledWith('cus_ben', [
+        'Prefers email contact.',
         'Dislikes phone calls.',
       ]);
       expect(memory.get).not.toHaveBeenCalledWith(CUSTOMER);
@@ -979,7 +979,7 @@ describe('ChatService', () => {
 
       expect(events.at(-1)).toMatchObject({ type: 'final' });
       expect(events.map((e) => e.type)).not.toContain('error');
-      expect(memory.replace).not.toHaveBeenCalled();
+      expect(memory.add).not.toHaveBeenCalled();
     });
 
     it('does not extract facts from an out-of-scope refusal', async () => {
@@ -993,18 +993,18 @@ describe('ChatService', () => {
       await ran(model);
 
       expect(model.factInputs).toHaveLength(0);
-      expect(memory.replace).not.toHaveBeenCalled();
+      expect(memory.add).not.toHaveBeenCalled();
     });
 
     it('does not write when nothing new is found', async () => {
       await ran(new FakeChatModel([[text('Hi.')]]));
 
-      expect(memory.replace).not.toHaveBeenCalled();
+      expect(memory.add).not.toHaveBeenCalled();
     });
 
     it('answers normally when the memory store fails to read or write', async () => {
       memory.get.mockRejectedValue(new Error('db down'));
-      memory.replace.mockRejectedValue(new Error('db down'));
+      memory.add.mockRejectedValue(new Error('db down'));
       const model = new FakeChatModel([[text('Hi.')]], undefined, undefined, [
         { facts: ['Dislikes phone calls.'] },
       ]);

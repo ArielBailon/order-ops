@@ -7,14 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-05 [P3] open - Fact merge is a read-modify-write, so concurrent turns of one customer can lose facts
-
-**File:** apps/orderops-agent/src/agent/agent.graph.ts:136
-**Found:** 2026-10-01 by /audit (scope: current; lens: quality)
-**Why it matters:** `remember` reads the facts, merges, then replaces the whole array. Two simultaneous requests from the same customer (different threads or two tabs) can overwrite each other and drop a just-extracted fact. The spec excludes only same-thread concurrency. Impact is a lost note, not corruption.
-**Suggested fix:** Accept as a documented limitation, or merge inside one Prisma transaction. No current requirement is lost either way.
-**Resolution:** 2026-10-02 independent review of f930c70: `remember` node (agent.graph.ts:182-200) unchanged by this feature; still open. Re-checked 2026-10-02 against f76b920: unchanged; still open.
-
 ### F-09 [P3] open - Stored refund reason depends on the model and is untrusted text for operators
 
 **File:** apps/orderops-agent/src/agent/refund-route.ts:100
@@ -31,11 +23,10 @@
 **Suggested fix:** Document it next to the model (done in a schema comment) and re-check drift output when the next migration is generated.
 **Resolution:** 2026-10-02 independent review of 5f9ba3b: the committed `20261002120000_operator_role/migration.sql` contains no `DROP INDEX`; raw `prisma migrate diff` output was not re-run (needs a database), so drift remains unverified. Re-checked 2026-10-02 against f930c70: migration unchanged (CREATE TYPE plus two ADD COLUMN, no DROP INDEX); still unverified for the same reason. Re-checked 2026-10-02 against f76b920: migration unchanged; still unverified (no database run in review).
 
-### F-12 [P3] open - Duplicate store test and redundant e2e mock reset
+### F-20 [P3] unverified - Per-customer advisory lock in the memory store was never run against Postgres
 
-**File:** apps/orderops-agent/src/refunds/refund.store.spec.ts:105
-**Found:** 2026-10-01 by /audit independent (scope: current; lens: tests)
-**Why it matters:** "rethrows an insert failure that is not a duplicate open request" repeats "rethrows an insert failure that is not a unique violation even if a request is open" with weaker assertions, so it adds no coverage. In chat.e2e-spec.ts the auto-reject test re-applies the same createRefund mock that beforeEach already sets. Harmless noise that hides which cases are distinct.
-**Suggested fix:** Delete the weaker duplicate test and the redundant mockImplementation. No coverage or requirement is lost.
-**Resolution:** 2026-10-02 independent review of f930c70: still present (refund.store.spec.ts:82 and :105; chat.e2e-spec.ts:98 and :343); line reference updated. Re-checked 2026-10-02 against f76b920: still present at the same lines; still open.
-
+**File:** apps/orderops-agent/src/memory/user-memory.store.ts:26
+**Found:** 2026-10-02 by /audit (scope: current; lens: quality, performance, tests)
+**Why it matters:** The store spec fakes the Prisma client, so it proves call order but not that `$executeRaw` accepts the `SELECT pg_advisory_xact_lock(...)` statement through the PrismaPg adapter, nor that concurrent `add` calls really serialize. If the statement were rejected, every fact write would fail and only log "memory write failed", so long-term memory would silently stop updating.
+**Suggested fix:** Check once against the dev database: send two simultaneous chat turns for one customer that each state a different preference and confirm both facts land in `UserMemory.facts`. No code change expected.
+**Resolution:**

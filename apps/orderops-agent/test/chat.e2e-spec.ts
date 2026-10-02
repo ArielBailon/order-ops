@@ -340,10 +340,6 @@ describe('gateway chat (e2e)', () => {
     });
 
     it('POST /chat auto-rejects an order delivered outside the window', async () => {
-      createRefund.mockImplementation(async (input) => ({
-        ok: true,
-        refund: { id: 'ref_e2e', status: input.status },
-      }));
       fetchMock.mockResolvedValue(Response.json(deliveredOrder(90)));
 
       const events = await requestRefund();

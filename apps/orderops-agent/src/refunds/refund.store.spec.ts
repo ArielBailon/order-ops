@@ -102,12 +102,6 @@ describe('PrismaRefundStore', () => {
     await expect(store.create(pending)).rejects.toBe(original);
   });
 
-  it('rethrows an insert failure that is not a duplicate open request', async () => {
-    refundRequest.create.mockRejectedValue(new Error('db down'));
-
-    await expect(store.create(pending)).rejects.toThrow('db down');
-  });
-
   it('does not look for a duplicate when an auto_rejected insert fails', async () => {
     refundRequest.create.mockRejectedValue(new Error('db down'));
 
