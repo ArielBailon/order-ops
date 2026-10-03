@@ -45,8 +45,10 @@
 - Structured model output uses `withStructuredOutput` with a Zod schema and a
   bounded retry, never unbounded loops.
 - Prompts live next to the node that uses them, as exported constants.
-- Model access goes through the project's provider layer once it exists
-  (Build plan item 5); until then, construct models in one place.
+- Model access goes through the provider layer in
+  `apps/orderops-agent/src/models/`: inject `CHEAP_MODEL` (routing, memory
+  extraction, summaries) or `STRONG_MODEL` (answers, tool loops); never build a
+  chat model elsewhere.
 
 ## Validation and API boundaries
 

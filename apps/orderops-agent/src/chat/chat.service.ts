@@ -5,6 +5,7 @@ import { Command, type BaseCheckpointSaver } from '@langchain/langgraph';
 import { buildAgentGraph, type CallerConfig } from '../agent/agent.graph.js';
 import { FaqService } from '../faq/faq.service.js';
 import { REFUND_REPLIES } from '../agent/refund-route.js';
+import { CHEAP_MODEL, STRONG_MODEL } from '../models/models.module.js';
 import { CHECKPOINTER } from '../memory/checkpointer.js';
 import {
   type Decision,
@@ -15,7 +16,6 @@ import {
   USER_MEMORY,
   type UserMemoryStore,
 } from '../memory/user-memory.store.js';
-import { CHAT_MODEL } from './chat-model.token.js';
 import { ChatAgentError } from './chat.errors.js';
 import {
   type AgentEvent,
@@ -23,8 +23,6 @@ import {
   type ChatEvent,
 } from './chat.schemas.js';
 import { OrdersClient } from './orders.client.js';
-
-export { CHAT_MODEL };
 
 export interface ChatTurn {
   message: string;
@@ -50,7 +48,8 @@ export class ChatService {
   private readonly graph;
 
   constructor(
-    @Inject(CHAT_MODEL) model: BaseChatModel,
+    @Inject(CHEAP_MODEL) cheap: BaseChatModel,
+    @Inject(STRONG_MODEL) strong: BaseChatModel,
     orders: OrdersClient,
     faq: FaqService,
     @Inject(CHECKPOINTER) checkpointer: BaseCheckpointSaver,
@@ -58,7 +57,8 @@ export class ChatService {
     @Inject(REFUND_STORE) refunds: RefundStore,
   ) {
     this.graph = buildAgentGraph({
-      model,
+      cheap,
+      strong,
       orders,
       faq,
       checkpointer,

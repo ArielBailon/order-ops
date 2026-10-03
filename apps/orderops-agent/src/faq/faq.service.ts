@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Document } from '@langchain/core/documents';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { CHAT_MODEL } from '../chat/chat-model.token.js';
+import { STRONG_MODEL } from '../models/models.module.js';
 import { type FinalAnswer, finalAnswerSchema } from '../chat/chat.schemas.js';
 import { invokeStructured } from '../chat/structured-output.js';
 import { POLICY_STORE } from './policy-store.js';
@@ -25,7 +25,7 @@ const faqAnswerSchema = finalAnswerSchema.pick({ answer: true });
 @Injectable()
 export class FaqService {
   constructor(
-    @Inject(CHAT_MODEL) private readonly model: BaseChatModel,
+    @Inject(STRONG_MODEL) private readonly model: BaseChatModel,
     @Inject(POLICY_STORE) private readonly policies: PolicySearch,
   ) {}
 

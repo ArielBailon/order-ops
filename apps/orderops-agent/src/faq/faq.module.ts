@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatModelModule } from '../chat/chat-model.module.js';
+import { ModelsModule } from '../models/models.module.js';
 import { FaqService } from './faq.service.js';
 import {
   createEmbeddings,
@@ -10,7 +10,7 @@ import {
 } from './policy-store.js';
 
 @Module({
-  imports: [ChatModelModule],
+  imports: [ModelsModule],
   providers: [
     FaqService,
     {

@@ -306,7 +306,9 @@ install on this project (arborist `edgesOut` bug); use `npx -y npm@11 install`
 until the global npm is updated.
 
 - Env: copy `.env.example` to `.env` and set `JWT_SECRET` (32+ chars); every
-  app validates its env at startup
+  app validates its env at startup. Chat models fail over Anthropic -> OpenAI
+  -> Bedrock (`AWS_REGION` set enables Bedrock; the other two keys stay
+  required); tier model ids live in `apps/orderops-agent/src/models/providers.ts`
 - Database: `docker compose up -d` (Postgres 16 + pgvector on `localhost:5432`)
 - Migrate + seed: `npx prisma migrate dev`, `npx prisma generate`, then `npx prisma db seed`
   (idempotent). Seed customers `ana@example.com`, `ben@example.com`,

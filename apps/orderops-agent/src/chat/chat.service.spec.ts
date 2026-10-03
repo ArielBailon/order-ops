@@ -103,9 +103,10 @@ describe('ChatService', () => {
   const refunds = { findOpenForOrder: vi.fn(), create: vi.fn() };
   const signal = new AbortController().signal;
 
-  const makeService = (model: FakeChatModel) =>
+  const makeService = (model: FakeChatModel, strong = model) =>
     new ChatService(
       model as unknown as BaseChatModel,
+      strong as unknown as BaseChatModel,
       orders as unknown as OrdersClient,
       faq as unknown as FaqService,
       saver,
@@ -191,6 +192,32 @@ describe('ChatService', () => {
     );
     expect(toolResults(model)).toEqual([JSON.stringify(ORDER_FIXTURE)]);
     expect(model.structuredInputs[0].at(-1)?.content).toContain('final reply');
+  });
+
+  it('sends routing and fact extraction to the cheap model, the tool loop to the strong one', async () => {
+    const cheap = new FakeChatModel([]);
+    const strong = new FakeChatModel(
+      [[text('Your kettle shipped.')]],
+      [{ answer: 'Your kettle has shipped.', orderIds: [] }],
+      [],
+    );
+
+    await run(
+      cheap,
+      'where is my order?',
+      signal,
+      {},
+      makeService(cheap, strong),
+    );
+
+    expect(cheap.routerInputs).toHaveLength(1);
+    expect(cheap.factInputs).toHaveLength(1);
+    expect(cheap.turnInputs).toHaveLength(0);
+    expect(cheap.structuredInputs).toHaveLength(0);
+    expect(strong.turnInputs).toHaveLength(1);
+    expect(strong.structuredInputs).toHaveLength(1);
+    expect(strong.routerInputs).toHaveLength(0);
+    expect(strong.factInputs).toHaveLength(0);
   });
 
   it('answers directly without tools and drops ungrounded order ids', async () => {

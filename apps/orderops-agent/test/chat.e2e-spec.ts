@@ -4,9 +4,9 @@ import { Test } from '@nestjs/testing';
 import { AIMessageChunk, type BaseMessage } from '@langchain/core/messages';
 import { MemorySaver } from '@langchain/langgraph';
 import request from 'supertest';
-import { CHAT_MODEL } from '../src/chat/chat.service.js';
 import { ORDER_FIXTURE } from '../src/chat/order.fixture.js';
 import { CHECKPOINTER } from '../src/memory/checkpointer.js';
+import { CHEAP_MODEL, STRONG_MODEL } from '../src/models/models.module.js';
 import { USER_MEMORY } from '../src/memory/user-memory.store.js';
 import { REFUND_STORE } from '../src/refunds/refund.store.js';
 import { EMBEDDINGS, POLICY_STORE } from '../src/faq/policy-store.js';
@@ -57,7 +57,9 @@ describe('gateway chat (e2e)', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { AppModule } = await import('../src/app.module.js');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(CHAT_MODEL)
+      .overrideProvider(CHEAP_MODEL)
+      .useValue(model)
+      .overrideProvider(STRONG_MODEL)
       .useValue(model)
       .overrideProvider(CHECKPOINTER)
       .useValue(new MemorySaver())

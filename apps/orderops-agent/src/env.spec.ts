@@ -19,4 +19,21 @@ describe('validateEnv', () => {
       expect(() => validateEnv(rest)).toThrow();
     },
   );
+
+  it('treats empty AWS values as unset', () => {
+    const env = validateEnv({
+      ...valid,
+      AWS_REGION: '',
+      AWS_ACCESS_KEY_ID: '',
+      AWS_SECRET_ACCESS_KEY: '',
+    });
+    expect(env.AWS_REGION).toBeUndefined();
+    expect(env.AWS_ACCESS_KEY_ID).toBeUndefined();
+  });
+
+  it('keeps AWS_REGION when set', () => {
+    expect(validateEnv({ ...valid, AWS_REGION: 'us-east-1' }).AWS_REGION).toBe(
+      'us-east-1',
+    );
+  });
 });

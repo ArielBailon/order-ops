@@ -67,7 +67,10 @@ export interface CallerConfig {
 }
 
 export interface AgentDeps {
-  model: BaseChatModel;
+  /** Classification-style calls: routing, fact extraction, summarization. */
+  cheap: BaseChatModel;
+  /** Answers and tool loops: FAQ, order and refund routes. */
+  strong: BaseChatModel;
   orders: OrdersClient;
   faq: Pick<FaqService, 'answer'>;
   checkpointer: BaseCheckpointSaver;
@@ -81,7 +84,8 @@ const logger = new Logger('AgentGraph');
 
 /** Nodes stream `AgentEvent`s through the custom stream writer; the last one is always `final`. */
 export function buildAgentGraph({
-  model,
+  cheap,
+  strong,
   orders,
   faq,
   checkpointer,
@@ -114,7 +118,7 @@ export function buildAgentGraph({
   return new StateGraph(AgentState)
     .addNode('router', async (state: State, config) => ({
       route: await classifyIntent(
-        model,
+        cheap,
         state.message,
         await historyOf(state, config),
         signalOf(config),
@@ -129,7 +133,7 @@ export function buildAgentGraph({
     .addNode('order', async (state: State, config) => {
       const emit = emitter(config);
       const reply = await runOrderRoute({
-        model,
+        model: strong,
         orders,
         message: state.message,
         history: await historyOf(state, config),
@@ -153,7 +157,7 @@ export function buildAgentGraph({
       };
       const { token, customerId, thread_id } = callerOf(config);
       const reply = await runRefundRoute({
-        model,
+        model: strong,
         orders,
         refunds,
         message: state.message,
@@ -182,7 +186,7 @@ export function buildAgentGraph({
     .addNode('remember', async (state: State, config) => {
       const { customerId } = callerOf(config);
       const added = await extractFacts(
-        model,
+        cheap,
         await factsOf(config),
         state.message,
         signalOf(config),
@@ -199,7 +203,7 @@ export function buildAgentGraph({
       'compact',
       async (state: State, config) =>
         (await compactHistory(
-          model,
+          cheap,
           state.messages,
           state.summary,
           signalOf(config),
