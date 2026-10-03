@@ -358,6 +358,18 @@ until the global npm is updated.
   conversation, per-model totals and the cached-token share (default: last 7
   days; needs `DATABASE_URL`). System prompts are cached on Anthropic and
   Bedrock via `cacheableSystem`
+- Evals: `npm run eval -- --provider anthropic|openai|bedrock [--ids a,b] [--category
+  normal|out_of_scope|adversarial] [--limit N]` runs `evals/dataset.json` (41 cases: normal,
+  out-of-scope, adversarial) through the real agent graph with both model tiers pinned to
+  one provider (no failover). Orders, refunds, memory and the checkpointer are in-memory
+  fakes with fixed fixtures and a fixed clock, and FAQ retrieval is a keyword search over
+  `policies/*.md`, so only the models cost money and need keys (`--provider` is required;
+  the matching `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or `AWS_REGION` must be set in
+  `.env`). Metrics are deterministic: route, tools, trajectory and guardrail pass rates,
+  overall and per category. Each run writes `evals/results/<UTC timestamp>-<provider>.json`
+  (summary, per-case flags, answers, tokens, estimated cost, dataset hash, git sha); results
+  are meant to be committed. Failed cases do not change the exit code, only a runner or
+  config error does; a single run is a sample, not proof
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack

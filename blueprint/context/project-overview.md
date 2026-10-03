@@ -1,6 +1,6 @@
 # OrderOps Agent - Project Overview
 
-<!-- blueprint:source-hash 1217d68e5db8ad3548dbcc8940783c0b237e42c98e1c65d6ce5b5801d4a9db7b -->
+<!-- blueprint:source-hash c338b2d9a73e345508c975413101cd8da5cfcbd5238f84ad3ac7078e41ead1aa -->
 
 > A support and operations agent for a fictional e-commerce store (NestJS + LangChain.js + LangGraph.js), built as a guided, deliberately scoped learning and portfolio project for production agentic patterns.
 
@@ -29,6 +29,9 @@ Build order from `build-plan.md`. Each item is a large, end-to-end feature (data
 5. **Multi-provider models** - Anthropic, OpenAI, and AWS Bedrock behind one interface; cheap model for classification, strong model for reasoning; failover to another provider on error.
 6. **Traces and cost** - per-request tracing of agent decisions, tools, tokens, latency (p95), and cost per conversation, plus prompt caching where supported.
 7. **Regression evals** - ~40-case dataset (normal, out-of-scope, adversarial); tool-selection, trajectory, answer quality (LLM-as-judge), and guardrail metrics; versioned results; CI workflow; provider comparison table.
+   - **7a. Eval harness and dataset** - ~40-case dataset (normal, out-of-scope, adversarial); a runner that drives the real agent graph against a chosen provider with deterministic fake orders data and in-memory stores; route/tool-selection, trajectory and guardrail metrics; versioned results in `evals/results/*.json`.
+   - **7b. Answer quality and provider comparison** - LLM-as-judge answer-quality metric with a fixed rubric; provider comparison table generated from the versioned results.
+   - **7c. Eval CI** - GitHub Actions workflow: keyless deterministic subset on pull requests, live-provider run on manual dispatch or schedule with repo secrets and a case/cost cap, regression check against the last committed results.
 
 Post-MVP:
 
