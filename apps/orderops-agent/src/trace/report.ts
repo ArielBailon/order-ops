@@ -7,6 +7,8 @@ export interface LatencyRow {
 }
 
 export interface ConversationRow {
+  /** A conversation is one customer's thread: thread ids are client-supplied. */
+  customerId: string;
   threadId: string;
   /** Null-priced calls are left out of the sum; `unpriced` counts them. */
   costUsd: number;

@@ -31,11 +31,11 @@ try {
   const overall = await pool.query<LatencyRow>(latencySql(false), [since]);
   const byRoute = await pool.query<LatencyRow>(latencySql(true), [since]);
   const conversations = await pool.query<ConversationRow>(
-    `SELECT t."threadId" AS "threadId",
+    `SELECT t."customerId" AS "customerId", t."threadId" AS "threadId",
             COALESCE(sum(c."costUsd"), 0)::float AS "costUsd",
             count(*) FILTER (WHERE c."costUsd" IS NULL)::int AS unpriced
      FROM "ChatTrace" t JOIN "LlmCall" c ON c."traceId" = t.id
-     WHERE t."createdAt" >= $1 GROUP BY t."threadId"`,
+     WHERE t."createdAt" >= $1 GROUP BY t."customerId", t."threadId"`,
     [since],
   );
   const models = await pool.query<ModelRow>(

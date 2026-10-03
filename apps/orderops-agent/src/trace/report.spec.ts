@@ -10,8 +10,8 @@ const data: ReportData = {
     { route: null, requests: 1, p50: 50, p95: 50 },
   ],
   conversations: [
-    { threadId: 'a', costUsd: 0.01, unpriced: 0 },
-    { threadId: 'b', costUsd: 0.03, unpriced: 2 },
+    { customerId: 'c1', threadId: 'a', costUsd: 0.01, unpriced: 0 },
+    { customerId: 'c2', threadId: 'a', costUsd: 0.03, unpriced: 2 },
   ],
   models: [
     {
