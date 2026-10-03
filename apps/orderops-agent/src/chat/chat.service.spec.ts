@@ -1154,6 +1154,20 @@ describe('ChatService', () => {
         type: 'final',
         data: { answer: 'Your kettle has shipped.' },
       });
+      // Let the swallowed rejection settle: it must not surface as unhandled.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(traces.record).toHaveBeenCalledTimes(1);
+    });
+
+    it('finishes the reply even when the trace write never settles', async () => {
+      traces.record.mockReturnValue(new Promise(() => undefined));
+
+      const events = await run(
+        new FakeChatModel([[text('Your kettle shipped.')]]),
+      );
+
+      expect(events.at(-1)).toMatchObject({ type: 'final' });
+      expect(traces.record).toHaveBeenCalledTimes(1);
     });
 
     it('stores no message text', async () => {

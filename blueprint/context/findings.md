@@ -13,9 +13,9 @@
 **Found:** 2026-10-03 by /audit independent (scope: current; lens: quality)
 **Why it matters:** `ChatTrace.threadId` is the client-supplied thread uuid, while the checkpoint key is prefixed with the customer id, so two customers using the same uuid are separate conversations. The per-conversation cost query groups by `threadId` only and would merge them, skewing the conversation count, average and max. Reachable only by a client reusing a uuid; the effect is limited to report accuracy.
 **Suggested fix:** `GROUP BY t."customerId", t."threadId"`. Nothing is lost.
-**Resolution:**
+**Resolution:** 2026-10-03 fix/write-traces-without-blocking-the-stream: `reply()` now starts `recordTrace` with `void` instead of awaiting it, so the stream ends right after `final`. `recordTrace` still catches and logs every error. New spec: a store whose write never settles no longer hangs the reply (negative control: with the old `await` that test times out). A real database stall was not reproduced; awaiting `/audit` re-review.
 
-### F-11 [P3] open - Trace write is awaited on the response path with no time bound
+### F-11 [P3] fixed - Trace write is awaited on the response path with no time bound
 
 **File:** apps/orderops-agent/src/chat/chat.service.ts:170
 **Found:** 2026-10-03 by /audit independent (scope: current; lens: performance)

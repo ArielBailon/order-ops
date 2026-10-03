@@ -164,7 +164,8 @@ export class ChatService {
       collector.note(out);
       yield out;
     } finally {
-      await this.recordTrace(
+      // Not awaited: a slow database must not hold the SSE stream open after `final`.
+      void this.recordTrace(
         collector.toRecord({ customerId, threadId, startedAt }, signal.aborted),
       );
     }
