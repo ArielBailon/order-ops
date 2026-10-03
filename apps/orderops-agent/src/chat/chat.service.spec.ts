@@ -1,10 +1,17 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { CallbackManager } from '@langchain/core/callbacks/manager';
 import {
+  AIMessage,
   AIMessageChunk,
   type BaseMessage,
   ToolMessage,
+  type UsageMetadata,
 } from '@langchain/core/messages';
 import { OutputParserException } from '@langchain/core/output_parsers';
+import {
+  ensureConfig,
+  getCallbackManagerForConfig,
+} from '@langchain/core/runnables';
 import { MemorySaver } from '@langchain/langgraph';
 import type { ChatEvent } from './chat.schemas.js';
 import { REFUND_REPLIES } from '../agent/refund-route.js';
@@ -18,6 +25,7 @@ import { ORDER_FIXTURE } from './order.fixture.js';
 import type { FaqService } from '../faq/faq.service.js';
 import type { RefundStore } from '../refunds/refund.store.js';
 import type { OrdersClient } from './orders.client.js';
+import type { TraceRecord } from '../trace/trace.store.js';
 
 type Turn = AIMessageChunk[];
 
@@ -42,6 +50,8 @@ const toolCall = (
 
 /** Scripted stand-in for the chat model: one chunk list per turn, one result per structured call. */
 class FakeChatModel {
+  /** When set, every model call reports this usage through the ambient LangChain callbacks. */
+  usage?: UsageMetadata;
   readonly turnInputs: BaseMessage[][] = [];
   readonly structuredInputs: BaseMessage[][] = [];
   readonly routerInputs: BaseMessage[][] = [];
@@ -56,9 +66,30 @@ class FakeChatModel {
     private readonly factResults: unknown[] = [],
   ) {}
 
+  /** Mimics a chat model run: start and end callbacks go to the handlers of the running graph. */
+  private async emit() {
+    if (!this.usage) return;
+    const parent = await getCallbackManagerForConfig(ensureConfig());
+    // Real chat models add their identity to the callback metadata like this.
+    const manager = await CallbackManager.configure(
+      parent,
+      undefined,
+      undefined,
+      undefined,
+      { ls_model_name: 'claude-sonnet-5', ls_provider: 'anthropic' },
+    );
+    const [run] = await manager!.handleChatModelStart(
+      { lc: 1, type: 'not_implemented', id: ['fake'] },
+      [[]],
+    );
+    const message = new AIMessage({ content: '', usage_metadata: this.usage });
+    await run.handleLLMEnd({ generations: [[{ text: '', message }]] } as never);
+  }
+
   bindTools() {
     return {
       stream: async (messages: BaseMessage[]) => {
+        await this.emit();
         this.turnInputs.push([...messages]);
         const turn = this.turns.shift();
         if (!turn) throw new Error('unexpected model turn');
@@ -73,6 +104,7 @@ class FakeChatModel {
     if (options?.name === 'remember_facts')
       return {
         invoke: async (messages: BaseMessage[]) => {
+          await this.emit();
           this.factInputs.push(messages);
           const result = this.factResults.shift() ?? { facts: [] };
           if (result instanceof Error) throw result;
@@ -83,6 +115,7 @@ class FakeChatModel {
     const queue = isRouter ? this.routerResults : this.structured;
     return {
       invoke: async (messages: BaseMessage[]) => {
+        await this.emit();
         (isRouter ? this.routerInputs : this.structuredInputs).push(messages);
         const result = queue.shift();
         if (result instanceof Error) throw result;
@@ -101,6 +134,7 @@ describe('ChatService', () => {
   const faq = { answer: vi.fn() };
   const memory = { get: vi.fn(), add: vi.fn() };
   const refunds = { findOpenForOrder: vi.fn(), create: vi.fn() };
+  const traces = { record: vi.fn() };
   const signal = new AbortController().signal;
 
   const makeService = (model: FakeChatModel, strong = model) =>
@@ -112,6 +146,7 @@ describe('ChatService', () => {
       saver,
       memory,
       refunds as unknown as RefundStore,
+      traces,
     );
 
   const run = async (
@@ -146,6 +181,7 @@ describe('ChatService', () => {
     saver = new MemorySaver();
     memory.get.mockReset().mockResolvedValue([]);
     memory.add.mockReset().mockResolvedValue(undefined);
+    traces.record.mockReset().mockResolvedValue(undefined);
     refunds.findOpenForOrder.mockReset().mockResolvedValue(null);
     refunds.create.mockReset().mockResolvedValue({
       ok: true,
@@ -1042,6 +1078,92 @@ describe('ChatService', () => {
       expect(events.at(-1)).toMatchObject({
         data: { answer: 'Your kettle has shipped.' },
       });
+    });
+  });
+  describe('traces', () => {
+    const USAGE = {
+      input_tokens: 1_000_000,
+      output_tokens: 100_000,
+      total_tokens: 1_100_000,
+      input_token_details: { cache_read: 400_000, cache_creation: 0 },
+    };
+    const recorded = () => traces.record.mock.calls[0][0] as TraceRecord;
+
+    it('records the route, tools and one priced call per model invocation', async () => {
+      const model = new FakeChatModel([
+        [toolCall('get_order', { orderId: 'ord_1001' })],
+        [text('Your kettle shipped.')],
+      ]);
+      model.usage = USAGE;
+
+      await run(model);
+
+      expect(traces.record).toHaveBeenCalledTimes(1);
+      const trace = recorded();
+      expect(trace).toMatchObject({
+        customerId: CUSTOMER,
+        threadId: THREAD,
+        route: 'order',
+        tools: ['get_order'],
+        status: 'ok',
+      });
+      // router, two tool-loop turns, final structured answer, fact extraction.
+      expect(trace.calls.length).toBeGreaterThanOrEqual(4);
+      expect(trace.calls[0]).toMatchObject({
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        tier: 'strong',
+        inputTokens: 1_000_000,
+        outputTokens: 100_000,
+        cacheReadTokens: 400_000,
+      });
+      // 0.6M * 3 + 0.4M * 0.3 + 0.1M * 15 USD per million
+      expect(trace.calls[0].costUsd).toBeCloseTo(1.8 + 0.12 + 1.5, 6);
+    });
+
+    it('records an error turn with the error status and no route', async () => {
+      const model = new FakeChatModel([], [], [new Error('router down')]);
+
+      const events = await run(model);
+
+      expect(events.at(-1)?.type).toBe('error');
+      expect(recorded()).toMatchObject({
+        route: null,
+        status: 'error',
+        tools: [],
+      });
+    });
+
+    it('records an aborted turn', async () => {
+      const abort = new AbortController();
+      abort.abort();
+
+      await run(new FakeChatModel([[text('hi')]]), 'hi', abort.signal);
+
+      expect(recorded().status).toBe('aborted');
+    });
+
+    it('keeps the chat response when the store throws', async () => {
+      traces.record.mockRejectedValue(new Error('db down'));
+
+      const events = await run(
+        new FakeChatModel([[text('Your kettle shipped.')]]),
+      );
+
+      expect(events.at(-1)).toMatchObject({
+        type: 'final',
+        data: { answer: 'Your kettle has shipped.' },
+      });
+    });
+
+    it('stores no message text', async () => {
+      await run(
+        new FakeChatModel([[text('secret reply')]]),
+        'my secret question',
+      );
+
+      const stored = JSON.stringify(traces.record.mock.calls);
+      expect(stored).not.toContain('secret');
     });
   });
 });

@@ -48,7 +48,10 @@
 - Model access goes through the provider layer in
   `apps/orderops-agent/src/models/`: inject `CHEAP_MODEL` (routing, memory
   extraction, summaries) or `STRONG_MODEL` (answers, tool loops); never build a
-  chat model elsewhere.
+  chat model elsewhere. Mark stable system prompts with `cacheableSystem` so
+  Anthropic and Bedrock can cache them.
+- Traces (`ChatTrace`, `LlmCall`) hold metadata only: never store prompts,
+  customer messages, tool arguments or results, or model output in them.
 
 ## Validation and API boundaries
 

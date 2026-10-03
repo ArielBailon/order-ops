@@ -9,6 +9,7 @@ import { CHECKPOINTER } from '../src/memory/checkpointer.js';
 import { CHEAP_MODEL, STRONG_MODEL } from '../src/models/models.module.js';
 import { USER_MEMORY } from '../src/memory/user-memory.store.js';
 import { REFUND_STORE } from '../src/refunds/refund.store.js';
+import { TRACE_STORE } from '../src/trace/trace.store.js';
 import { EMBEDDINGS, POLICY_STORE } from '../src/faq/policy-store.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -63,6 +64,8 @@ describe('gateway chat (e2e)', () => {
       .useValue(model)
       .overrideProvider(CHECKPOINTER)
       .useValue(new MemorySaver())
+      .overrideProvider(TRACE_STORE)
+      .useValue({ record: async () => undefined })
       .overrideProvider(REFUND_STORE)
       .useValue({
         findOpenForOrder: async () => null,

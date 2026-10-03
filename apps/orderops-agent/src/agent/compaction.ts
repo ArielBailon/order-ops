@@ -8,6 +8,7 @@ import {
 } from '@langchain/core/messages';
 import { z } from 'zod';
 import { invokeStructured } from '../chat/structured-output.js';
+import { cacheableSystem } from '../models/prompt-cache.js';
 
 /** Past this many persisted messages, older ones are folded into the summary. */
 export const COMPACT_ABOVE = 12;
@@ -75,7 +76,7 @@ export async function compactHistory(
       summarySchema,
       'summarize_history',
       [
-        new SystemMessage(SUMMARY_PROMPT),
+        cacheableSystem(SUMMARY_PROMPT),
         new HumanMessage(
           `Previous summary: ${summary || '(none)'}\n\nNew messages:\n${transcript}`,
         ),

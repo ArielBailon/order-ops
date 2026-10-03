@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { forProvider } from './prompt-cache.js';
 
 export interface Candidate {
   provider: string;
@@ -67,7 +68,10 @@ function failover(entries: Entry[]) {
     async invoke(input: unknown, options?: CallOptions) {
       for (let i = 0; ; i++) {
         try {
-          return await entries[i].runnable.invoke(input, options);
+          return await entries[i].runnable.invoke(
+            forProvider(input, entries[i].provider),
+            options,
+          );
         } catch (error) {
           if (!next(i, error, options?.signal)) throw error;
         }
@@ -78,7 +82,10 @@ function failover(entries: Entry[]) {
         for (let i = 0; ; i++) {
           let yielded = false;
           try {
-            const stream = await entries[i].runnable.stream!(input, options);
+            const stream = await entries[i].runnable.stream!(
+              forProvider(input, entries[i].provider),
+              options,
+            );
             for await (const chunk of stream) {
               yielded = true;
               yield chunk;

@@ -329,7 +329,7 @@ until the global npm is updated.
 - Chat: `POST http://localhost:3000/chat` with `{ "message", "threadId"? }` (uuid; omit to
   start a thread) streams SSE; the `final` event returns the `threadId` to send
   next. The gateway creates its LangGraph checkpoint tables at startup in the
-  same database; the `UserMemory` and `RefundRequest` tables come from
+  same database; the `UserMemory`, `RefundRequest`, `ChatTrace` and `LlmCall` tables come from
   `npx prisma migrate deploy` (`migrate dev` reports drift from library-managed
   tables such as `policy_chunks` and asks to reset the database: do not)
 - Refunds: a refund request in chat answers with `route: "refund"`; the `final`
@@ -351,6 +351,13 @@ until the global npm is updated.
   on a different request is left alone)
 - Build: `npx nest build <app>` (`npm run build` builds only `orderops-agent`)
 - Production server (gateway): `npm run build && npm run start:prod`
+- Traces: every chat request writes a `ChatTrace` with one `LlmCall` per model
+  call (provider, model, tokens, cached tokens, latency, estimated USD cost from
+  `models/pricing.ts`; metadata only, no message text). `npm run report:traces
+  [-- --since 2026-10-01]` prints p50/p95 latency per route, cost per
+  conversation, per-model totals and the cached-token share (default: last 7
+  days; needs `DATABASE_URL`). System prompts are cached on Anthropic and
+  Bedrock via `cacheableSystem`
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack

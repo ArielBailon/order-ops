@@ -3,6 +3,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { invokeStructured } from '../chat/structured-output.js';
+import { cacheableSystem } from '../models/prompt-cache.js';
 
 export const MAX_FACTS = 20;
 export const MAX_FACT_LENGTH = 200;
@@ -64,7 +65,7 @@ export async function extractFacts(
       factsSchema,
       'remember_facts',
       [
-        new SystemMessage(FACTS_PROMPT),
+        cacheableSystem(FACTS_PROMPT),
         new HumanMessage(
           `Existing notes:\n${existing.map((f) => `- ${f}`).join('\n') || '(none)'}\n\nLatest message:\n${message}`,
         ),

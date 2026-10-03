@@ -89,3 +89,46 @@ model RefundRequest {
   @@index([customerId])
   @@index([orderId])
 }
+
+enum TraceStatus {
+  ok
+  error
+  aborted
+}
+
+/// One chat request: the route it took, tools it used, and how it ended. Metadata only, never message text.
+model ChatTrace {
+  id         String      @id @default(uuid())
+  customerId String
+  /// The client thread id, not the customerId-prefixed checkpoint key.
+  threadId   String
+  /// Null when the request failed before routing.
+  route      String?
+  tools      String[]
+  status     TraceStatus
+  latencyMs  Int
+  createdAt  DateTime    @default(now())
+  calls      LlmCall[]
+
+  @@index([createdAt])
+  @@index([threadId])
+}
+
+/// One completed model call within a chat request. Cost is an estimate from the in-repo price table.
+model LlmCall {
+  id               String    @id @default(uuid())
+  traceId          String
+  trace            ChatTrace @relation(fields: [traceId], references: [id], onDelete: Cascade)
+  tier             String
+  provider         String
+  model            String
+  inputTokens      Int
+  outputTokens     Int
+  cacheReadTokens  Int
+  cacheWriteTokens Int
+  latencyMs        Int
+  costUsd          Decimal?  @db.Decimal(12, 6)
+  createdAt        DateTime  @default(now())
+
+  @@index([traceId])
+}

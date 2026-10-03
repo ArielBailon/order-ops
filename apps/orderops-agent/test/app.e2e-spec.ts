@@ -21,11 +21,14 @@ describe('gateway auth (e2e)', () => {
     const { CHECKPOINTER } = await import('../src/memory/checkpointer.js');
     const { USER_MEMORY } = await import('../src/memory/user-memory.store.js');
     const { REFUND_STORE } = await import('../src/refunds/refund.store.js');
+    const { TRACE_STORE } = await import('../src/trace/trace.store.js');
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(CHECKPOINTER)
       .useValue(new MemorySaver())
+      .overrideProvider(TRACE_STORE)
+      .useValue({})
       .overrideProvider(REFUND_STORE)
       .useValue({})
       .overrideProvider(USER_MEMORY)
@@ -47,7 +50,9 @@ describe('gateway auth (e2e)', () => {
   beforeEach(() => fetchMock.mockReset());
 
   it('POST /auth/login returns a bearer token', async () => {
-    fetchMock.mockResolvedValue(Response.json({ customerId: 'cus_ana', role: 'customer' }));
+    fetchMock.mockResolvedValue(
+      Response.json({ customerId: 'cus_ana', role: 'customer' }),
+    );
     const res = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ email: 'ana@example.com', password: 'pw' })

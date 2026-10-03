@@ -3,7 +3,6 @@ import {
   type AIMessageChunk,
   type BaseMessage,
   HumanMessage,
-  SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
 import type { ToolCall } from '@langchain/core/messages/tool';
@@ -18,6 +17,7 @@ import {
 import { createOrderTools } from '../chat/order-tools.js';
 import type { OrdersClient } from '../chat/orders.client.js';
 import { invokeStructured } from '../chat/structured-output.js';
+import { cacheableSystem } from '../models/prompt-cache.js';
 
 export const ORDER_SYSTEM_PROMPT = `You are the support assistant of an online store.
 You help the signed-in customer with questions about their own orders: status, shipping, delivery, and contents.
@@ -55,7 +55,7 @@ export async function runOrderRoute({
   const seenOrderIds = new Set<string>();
   const tools = createOrderTools(orders, token, seenOrderIds, signal);
   const messages: BaseMessage[] = [
-    new SystemMessage(ORDER_SYSTEM_PROMPT),
+    cacheableSystem(ORDER_SYSTEM_PROMPT),
     ...history,
     new HumanMessage(message),
   ];

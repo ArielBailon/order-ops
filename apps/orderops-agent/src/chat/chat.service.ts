@@ -7,6 +7,12 @@ import { FaqService } from '../faq/faq.service.js';
 import { REFUND_REPLIES } from '../agent/refund-route.js';
 import { CHEAP_MODEL, STRONG_MODEL } from '../models/models.module.js';
 import { CHECKPOINTER } from '../memory/checkpointer.js';
+import { TraceCollector } from '../trace/trace-recorder.js';
+import {
+  TRACE_STORE,
+  type TraceRecord,
+  type TraceStore,
+} from '../trace/trace.store.js';
 import {
   type Decision,
   REFUND_STORE,
@@ -55,6 +61,7 @@ export class ChatService {
     @Inject(CHECKPOINTER) checkpointer: BaseCheckpointSaver,
     @Inject(USER_MEMORY) memory: UserMemoryStore,
     @Inject(REFUND_STORE) refunds: RefundStore,
+    @Inject(TRACE_STORE) private readonly traces: TraceStore,
   ) {
     this.graph = buildAgentGraph({
       cheap,
@@ -127,22 +134,48 @@ export class ChatService {
       customerId,
       thread_id: threadKey(customerId, threadId),
     };
+    const collector = new TraceCollector();
+    const startedAt = Date.now();
     try {
       const stream = await this.graph.stream(
         { message, messages: [new HumanMessage(message)] },
-        { streamMode: 'custom', signal, configurable },
+        {
+          streamMode: 'custom',
+          signal,
+          configurable,
+          callbacks: [collector],
+        },
       );
-      for await (const event of stream as AsyncIterable<AgentEvent>)
-        yield event.type === 'final'
-          ? { type: 'final', data: { ...event.data, threadId } }
-          : event;
+      for await (const event of stream as AsyncIterable<AgentEvent>) {
+        const out: ChatEvent =
+          event.type === 'final'
+            ? { type: 'final', data: { ...event.data, threadId } }
+            : event;
+        collector.note(out);
+        yield out;
+      }
     } catch (error) {
       const code = error instanceof ChatAgentError ? error.code : 'agent_error';
       this.logger.warn(`chat failed (${code}): ${(error as Error).name}`);
-      yield {
+      const out: ChatEvent = {
         type: 'error',
         data: { code, message: CHAT_ERROR_MESSAGES[code] },
       };
+      collector.note(out);
+      yield out;
+    } finally {
+      await this.recordTrace(
+        collector.toRecord({ customerId, threadId, startedAt }, signal.aborted),
+      );
+    }
+  }
+
+  /** Best-effort: a trace the store cannot write never changes the chat response. */
+  private async recordTrace(trace: TraceRecord): Promise<void> {
+    try {
+      await this.traces.record(trace);
+    } catch (error) {
+      this.logger.warn(`trace write failed: ${(error as Error).name}`);
     }
   }
 }

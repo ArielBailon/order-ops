@@ -1,11 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Document } from '@langchain/core/documents';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage } from '@langchain/core/messages';
 import { STRONG_MODEL } from '../models/models.module.js';
 import { type FinalAnswer, finalAnswerSchema } from '../chat/chat.schemas.js';
 import { invokeStructured } from '../chat/structured-output.js';
 import { POLICY_STORE } from './policy-store.js';
+import { cacheableSystem } from '../models/prompt-cache.js';
 
 export interface PolicySearch {
   similaritySearch(query: string, k: number): Promise<Document[]>;
@@ -44,7 +45,7 @@ export class FaqService {
       faqAnswerSchema,
       'faq_answer',
       [
-        new SystemMessage(FAQ_SYSTEM_PROMPT),
+        cacheableSystem(FAQ_SYSTEM_PROMPT),
         new HumanMessage(
           `Policy excerpts:\n${excerpts}\n\nCustomer question: ${message}`,
         ),

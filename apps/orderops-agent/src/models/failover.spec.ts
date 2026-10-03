@@ -1,5 +1,7 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { SystemMessage } from '@langchain/core/messages';
 import { createFailoverModel } from './failover.js';
+import { cacheableSystem } from './prompt-cache.js';
 
 interface Script {
   /** Result of `invoke`, or an error to throw. */
@@ -10,12 +12,14 @@ interface Script {
 
 class Fake {
   calls: string[] = [];
+  inputs: unknown[] = [];
   constructor(
     private readonly name: string,
     private readonly script: Script,
   ) {}
-  invoke = async () => {
+  invoke = async (input?: unknown) => {
     this.calls.push(this.name);
+    this.inputs.push(input);
     if (this.script.result instanceof Error) throw this.script.result;
     return this.script.result;
   };
@@ -133,6 +137,21 @@ describe('createFailoverModel', () => {
       ).rejects.toThrow('aborted');
       expect(fakes[1].calls).toEqual([]);
     });
+  });
+
+  it('rewrites a cacheable system prompt for each candidate', async () => {
+    const { model, fakes } = make(
+      ['anthropic', { result: new Error('down') }],
+      ['openai', { result: 'ok' }],
+    );
+
+    await (model as any).invoke([cacheableSystem('Be brief.')]);
+
+    const sent = (i: number) => (fakes[i].inputs[0] as SystemMessage[])[0];
+    expect(sent(0).content).toEqual([
+      { type: 'text', text: 'Be brief.', cache_control: { type: 'ephemeral' } },
+    ]);
+    expect(sent(1).content).toBe('Be brief.');
   });
 
   it('refuses to build with no candidates', () => {

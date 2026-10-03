@@ -7,11 +7,18 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-09 [P3] open - Stored refund reason depends on the model and is untrusted text for operators
+### F-10 [P3] open - Conversation cost report groups by thread id alone
 
-**File:** apps/orderops-agent/src/agent/refund-route.ts:100
-**Found:** 2026-10-01 by /audit independent (scope: current; lens: security)
-**Why it matters:** The 'reason required' guard and the stored reason both depend on the model. It can invent a reason, and injected text can end up in the stored reason that operators will read in feature 4b. Amount and order cannot escape the code-enforced rules or the owner check.
-**Suggested fix:** Accept for 4a. In 4b, show the reason to operators as quoted data.
-**Resolution:** 2026-10-02 independent review of 5f9ba3b: `GET /refunds/pending` returns `reason` only as a JSON string value and AGENTS.md labels it untrusted customer text, which applies the 4b suggestion. The model-dependent reason itself remains; status left for the builder/user to set. Re-checked 2026-10-02 against f930c70: unchanged (refund.store.ts:54-55 and :176 return it as plain JSON data); still open pending a user decision to accept or close. Re-checked 2026-10-02 against f76b920: unchanged; still open.
+**File:** apps/orderops-agent/src/trace/report-traces.ts:42
+**Found:** 2026-10-03 by /audit independent (scope: current; lens: quality)
+**Why it matters:** `ChatTrace.threadId` is the client-supplied thread uuid, while the checkpoint key is prefixed with the customer id, so two customers using the same uuid are separate conversations. The per-conversation cost query groups by `threadId` only and would merge them, skewing the conversation count, average and max. Reachable only by a client reusing a uuid; the effect is limited to report accuracy.
+**Suggested fix:** `GROUP BY t."customerId", t."threadId"`. Nothing is lost.
+**Resolution:**
 
+### F-11 [P3] open - Trace write is awaited on the response path with no time bound
+
+**File:** apps/orderops-agent/src/chat/chat.service.ts:170
+**Found:** 2026-10-03 by /audit independent (scope: current; lens: performance)
+**Why it matters:** `reply()` awaits `recordTrace` in `finally`, and the controller only ends the SSE response after the generator finishes. A slow or unreachable database (pool connect wait) therefore holds the stream open after the `final` event, even though a failed write is already best-effort. Errors are swallowed but latency is not bounded. Unverified under a real database stall.
+**Suggested fix:** Start the write without awaiting it (keep the existing catch and log), or race it against a short timeout. Nothing is lost; tests that expect the write after the stream would need to await the store call.
+**Resolution:**

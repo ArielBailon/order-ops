@@ -31,9 +31,12 @@ describe('refund approvals (e2e)', () => {
     const { CHECKPOINTER } = await import('../src/memory/checkpointer.js');
     const { USER_MEMORY } = await import('../src/memory/user-memory.store.js');
     const { REFUND_STORE } = await import('../src/refunds/refund.store.js');
+    const { TRACE_STORE } = await import('../src/trace/trace.store.js');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(CHECKPOINTER)
       .useValue(new MemorySaver())
+      .overrideProvider(TRACE_STORE)
+      .useValue({})
       .overrideProvider(REFUND_STORE)
       .useValue({ decide, listPending })
       .overrideProvider(ChatService)
@@ -141,7 +144,11 @@ describe('refund approvals (e2e)', () => {
     expect(resumeRefund).toHaveBeenCalledWith(
       'cus_ana:thread-1',
       'cus_ana',
-      expect.objectContaining({ id: 'ref_1', orderId: 'ord_1', amount: '89.90' }),
+      expect.objectContaining({
+        id: 'ref_1',
+        orderId: 'ord_1',
+        amount: '89.90',
+      }),
       'approved',
     );
   });
@@ -156,7 +163,11 @@ describe('refund approvals (e2e)', () => {
     expect(resumeRefund).toHaveBeenCalledWith(
       'cus_ana:thread-1',
       'cus_ana',
-      expect.objectContaining({ id: 'ref_1', orderId: 'ord_1', amount: '89.90' }),
+      expect.objectContaining({
+        id: 'ref_1',
+        orderId: 'ord_1',
+        amount: '89.90',
+      }),
       'rejected',
     );
   });

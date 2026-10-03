@@ -2,7 +2,6 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import {
   type BaseMessage,
   HumanMessage,
-  SystemMessage,
 } from '@langchain/core/messages';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
@@ -24,6 +23,7 @@ import {
 } from '../refunds/refund-rules.js';
 import type { RefundStore } from '../refunds/refund.store.js';
 import { runToolLoop } from './order-route.js';
+import { cacheableSystem } from '../models/prompt-cache.js';
 
 const logger = new Logger('RefundRoute');
 
@@ -225,7 +225,7 @@ async function propose({
   emit,
 }: RefundRouteInput): Promise<RefundProposal> {
   const messages: BaseMessage[] = [
-    new SystemMessage(REFUND_SYSTEM_PROMPT),
+    cacheableSystem(REFUND_SYSTEM_PROMPT),
     ...history,
     new HumanMessage(message),
   ];

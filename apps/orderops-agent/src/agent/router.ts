@@ -2,10 +2,10 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import {
   type BaseMessage,
   HumanMessage,
-  SystemMessage,
 } from '@langchain/core/messages';
 import { type ChatRoute, routedIntentSchema } from '../chat/chat.schemas.js';
 import { invokeStructured } from '../chat/structured-output.js';
+import { cacheableSystem } from '../models/prompt-cache.js';
 
 export const ROUTER_PROMPT = `You route messages sent to an online store's support assistant. Reply with exactly one intent:
 - "order": questions about the customer's own orders (status, tracking, delivery, contents).
@@ -25,7 +25,7 @@ export async function classifyIntent(
     model,
     routedIntentSchema,
     'route_message',
-    [new SystemMessage(ROUTER_PROMPT), ...history, new HumanMessage(message)],
+    [cacheableSystem(ROUTER_PROMPT), ...history, new HumanMessage(message)],
     signal,
   );
   return intent;

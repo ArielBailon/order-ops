@@ -14,6 +14,7 @@
     "start:dev": "nest start --watch",
     "start:all": "concurrently -k -n orders,customers,gateway -c cyan,magenta,green \"npm run start:dev -- orders-service\" \"npm run start:dev -- customers-service\" \"npm run start:dev\"",
     "ingest:policies": "tsx --env-file=.env apps/orderops-agent/src/faq/ingest-policies.ts",
+    "report:traces": "tsx --env-file=.env apps/orderops-agent/src/trace/report-traces.ts",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/apps/orderops-agent/main",
     "lint": "oxlint apps/ libs/",
