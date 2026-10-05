@@ -1,3 +1,4 @@
+import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage } from '@langchain/core/messages';
 import { MemorySaver } from '@langchain/langgraph';
@@ -55,6 +56,23 @@ export interface RunnerDeps {
   timeoutMs?: number;
 }
 
+/** Records what each tool returned, i.e. what the model saw (run-time only, never persisted). */
+class ToolResultCollector extends BaseCallbackHandler {
+  name = 'tool-result-collector';
+  awaitHandlers = true;
+  readonly results: string[] = [];
+
+  handleToolEnd(output: unknown): void {
+    const content =
+      typeof output === 'object' && output !== null && 'content' in output
+        ? (output as { content: unknown }).content
+        : output;
+    this.results.push(
+      typeof content === 'string' ? content : JSON.stringify(content),
+    );
+  }
+}
+
 export interface ToolCallRun {
   name: string;
   orderId?: string;
@@ -68,6 +86,8 @@ export interface CaseRun {
   route: ChatRoute | null;
   /** Tool calls over all turns, in call order. */
   toolCalls: ToolCallRun[];
+  /** What the tools returned, in call order; input for the answer-quality judge. */
+  toolResults: string[];
   answer: string;
   refund: RefundSummary | null;
   approvalRequired: boolean;
@@ -108,6 +128,7 @@ export async function runCase(
     thread_id: `${customerId}:eval-${testCase.id}`,
   };
   const collector = new TraceCollector();
+  const toolResults = new ToolResultCollector();
   const signal = AbortSignal.timeout(timeoutMs);
   const startedAt = Date.now();
 
@@ -116,6 +137,7 @@ export async function runCase(
     error: null,
     route: null,
     toolCalls: [],
+    toolResults: [],
     answer: '',
     refund: null,
     approvalRequired: false,
@@ -138,7 +160,12 @@ export async function runCase(
       run.approvalRequired = false;
       const stream = await graph.stream(
         { message, messages: [new HumanMessage(message)] },
-        { streamMode: 'custom', signal, configurable, callbacks: [collector] },
+        {
+          streamMode: 'custom',
+          signal,
+          configurable,
+          callbacks: [collector, toolResults],
+        },
       );
       for await (const event of stream as AsyncIterable<AgentEvent>) {
         run.events++;
@@ -166,6 +193,7 @@ export async function runCase(
     run.streamOk = false;
   }
 
+  run.toolResults = toolResults.results;
   for (const call of collector.calls) {
     run.llmCalls++;
     run.inputTokens += call.inputTokens;

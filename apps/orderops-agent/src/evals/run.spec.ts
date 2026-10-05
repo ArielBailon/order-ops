@@ -145,6 +145,16 @@ describe('runCase', () => {
     expect(run.events).toBeGreaterThanOrEqual(2);
   });
 
+  it('captures what the tools returned, in call order', async () => {
+    const run = await runCase(orderCase(), {
+      models: models(orderScript()),
+      policies,
+    });
+
+    expect(run.toolResults).toHaveLength(1);
+    expect(run.toolResults[0]).toContain('ORD-1002');
+  });
+
   it('runs every turn of a case in one thread', async () => {
     const routed: BaseMessage[][] = [];
     const run = await runCase(

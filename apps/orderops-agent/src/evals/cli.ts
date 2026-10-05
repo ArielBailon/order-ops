@@ -1,3 +1,4 @@
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -12,6 +13,13 @@ import {
   loadDataset,
 } from './dataset.js';
 import { KeywordPolicySearch } from './fakes.js';
+import {
+  createJudgeModel,
+  DEFAULT_JUDGE_PROVIDER,
+  judgeAnswer,
+  type JudgeOutcome,
+  RUBRIC_VERSION,
+} from './judge.js';
 import {
   type CaseScore,
   METRIC_NAMES,
@@ -30,7 +38,7 @@ export const RESULTS_DIR = fileURLToPath(
 );
 
 export const USAGE =
-  'Usage: npm run eval -- --provider anthropic|openai|bedrock [--ids a,b] [--category normal|out_of_scope|adversarial] [--limit N]';
+  'Usage: npm run eval -- --provider anthropic|openai|bedrock [--ids a,b] [--category normal|out_of_scope|adversarial] [--limit N] [--judge [--judge-provider anthropic|openai|bedrock]]';
 
 /** A bad flag or missing credential; reported as a message, never a stack trace. */
 export class CliError extends Error {
@@ -45,6 +53,9 @@ export interface CliOptions {
   ids?: string[];
   category?: EvalCategory;
   limit?: number;
+  /** Score answer quality with the LLM judge (an extra paid model call per case). */
+  judge?: boolean;
+  judgeProvider?: Provider;
 }
 
 export function parseCliArgs(argv: string[]): CliOptions {
@@ -57,6 +68,8 @@ export function parseCliArgs(argv: string[]): CliOptions {
         ids: { type: 'string' },
         category: { type: 'string' },
         limit: { type: 'string' },
+        judge: { type: 'boolean' },
+        'judge-provider': { type: 'string' },
       },
       strict: true,
     }));
@@ -88,6 +101,18 @@ export function parseCliArgs(argv: string[]): CliOptions {
     if (!Number.isInteger(limit) || limit < 1)
       throw new CliError('--limit must be a positive integer.');
     options.limit = limit;
+  }
+  if (values.judge) options.judge = true;
+  if (values['judge-provider'] !== undefined) {
+    if (!values.judge)
+      throw new CliError(`--judge-provider needs --judge.
+${USAGE}`);
+    const judgeProvider = PROVIDERS.find((p) => p === values['judge-provider']);
+    if (!judgeProvider)
+      throw new CliError(
+        `--judge-provider must be one of ${PROVIDERS.join(', ')}.`,
+      );
+    options.judgeProvider = judgeProvider;
   }
   return options;
 }
@@ -133,6 +158,8 @@ export interface ResultSummary extends Summary {
   cachedTokens: number;
   /** Null when any call used a model without a price. */
   costUsd: number | null;
+  /** Judge model spend, kept apart from the agent cost; present only for judged runs. */
+  judgeCostUsd?: number | null;
 }
 
 export interface ResultCase {
@@ -158,8 +185,32 @@ export interface ResultFile {
   datasetSha256: string;
   provider: Provider;
   models: { cheap: string; strong: string };
+  /** Present only when the run was judged. */
+  judge?: { provider: Provider; model: string; rubricVersion: number };
   summary: ResultSummary;
   cases: ResultCase[];
+}
+
+/** Judges each finished case; a failed run, or a judge failure, leaves the case unjudged. */
+export async function judgeRuns(
+  cases: EvalCase[],
+  runs: CaseRun[],
+  model: BaseChatModel,
+): Promise<(JudgeOutcome | null)[]> {
+  const outcomes: (JudgeOutcome | null)[] = [];
+  for (const [i, testCase] of cases.entries()) {
+    const run = runs[i];
+    outcomes.push(
+      run.error === null && run.answer
+        ? await judgeAnswer(model, {
+            turns: testCase.turns,
+            answer: run.answer,
+            toolResults: run.toolResults,
+          })
+        : null,
+    );
+  }
+  return outcomes;
 }
 
 export function buildResult(input: {
@@ -169,9 +220,13 @@ export function buildResult(input: {
   provider: Provider;
   cases: EvalCase[];
   runs: CaseRun[];
+  /** Outcomes parallel to `cases`, from the judge `provider`; omit for an unjudged run. */
+  judged?: { provider: Provider; outcomes: (JudgeOutcome | null)[] };
 }): ResultFile {
-  const { cases, runs, provider } = input;
-  const scores = cases.map((c, i) => scoreCase(c, runs[i]));
+  const { cases, runs, provider, judged } = input;
+  const scores = cases.map((c, i) =>
+    scoreCase(c, runs[i], judged?.outcomes[i]?.pass ?? null),
+  );
   const sumCost = runs.reduce<number | null>(
     (sum, run) =>
       sum === null || run.costUsd === null ? null : sum + run.costUsd,
@@ -184,6 +239,13 @@ export function buildResult(input: {
     datasetSha256: input.datasetSha256,
     provider,
     models: MODEL_IDS[provider],
+    ...(judged && {
+      judge: {
+        provider: judged.provider,
+        model: MODEL_IDS[judged.provider].strong,
+        rubricVersion: RUBRIC_VERSION,
+      },
+    }),
     summary: {
       ...summarize(scores),
       errors: runs.filter((run) => run.error !== null).length,
@@ -191,6 +253,15 @@ export function buildResult(input: {
       outputTokens: runs.reduce((n, run) => n + run.outputTokens, 0),
       cachedTokens: runs.reduce((n, run) => n + run.cachedTokens, 0),
       costUsd: sumCost,
+      ...(judged && {
+        judgeCostUsd: judged.outcomes.reduce<number | null>(
+          (sum, outcome) =>
+            sum === null || (outcome && outcome.costUsd === null)
+              ? null
+              : sum + (outcome?.costUsd ?? 0),
+          0,
+        ),
+      }),
     },
     cases: scores.map(({ id, category, ...flags }, i) => ({
       id,
@@ -261,6 +332,11 @@ export function formatSummary(result: ResultFile): string {
         ([category, rates]) =>
           `  ${category.padEnd(12)} ${rates.cases} cases, pass ${percent(rates.pass)}`,
       ),
+    ...(result.judge
+      ? [
+          `judge ${result.judge.provider} (${result.judge.model}, rubric v${result.judge.rubricVersion}), cost ${summary.judgeCostUsd == null ? 'n/a' : `$${summary.judgeCostUsd.toFixed(4)}`}`,
+        ]
+      : []),
     `tokens in ${summary.inputTokens} (cached ${summary.cachedTokens}), out ${summary.outputTokens}, estimated cost ${summary.costUsd === null ? 'n/a' : `$${summary.costUsd.toFixed(4)}`}`,
   ];
   return lines.join('\n');
@@ -270,21 +346,26 @@ export function formatSummary(result: ResultFile): string {
 export async function main(
   argv: string[],
   env: NodeJS.ProcessEnv,
+  /** Test seam: a ready judge model instead of one built from the environment. */
+  judgeModel?: BaseChatModel,
 ): Promise<string> {
   const options = parseCliArgs(argv);
   requireCredentials(options.provider, env);
+  const judgeProvider = options.judgeProvider ?? DEFAULT_JUDGE_PROVIDER;
+  if (options.judge && !judgeModel) requireCredentials(judgeProvider, env);
   const dataset = await loadDataset();
   const cases = selectCases(dataset.cases, options);
   const policies = new KeywordPolicySearch(
     await loadPolicyChunks(POLICIES_DIR),
   );
-  const models = createEvalModels(options.provider, {
+  const providerEnv = {
     ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY ?? '',
     OPENAI_API_KEY: env.OPENAI_API_KEY ?? '',
     AWS_REGION: env.AWS_REGION || undefined,
     AWS_ACCESS_KEY_ID: env.AWS_ACCESS_KEY_ID || undefined,
     AWS_SECRET_ACCESS_KEY: env.AWS_SECRET_ACCESS_KEY || undefined,
-  });
+  };
+  const models = createEvalModels(options.provider, providerEnv);
 
   const runAt = new Date();
   const runs = await runCases(cases, { models, policies }, (run, i) =>
@@ -292,6 +373,16 @@ export async function main(
       `[${i + 1}/${cases.length}] ${run.id}${run.error ? ` error: ${run.error}` : ''}`,
     ),
   );
+  const judged = options.judge
+    ? {
+        provider: judgeProvider,
+        outcomes: await judgeRuns(
+          cases,
+          runs,
+          judgeModel ?? createJudgeModel(judgeProvider, providerEnv),
+        ),
+      }
+    : undefined;
   const result = buildResult({
     runAt,
     gitSha: readGitSha(),
@@ -299,6 +390,7 @@ export async function main(
     provider: options.provider,
     cases,
     runs,
+    judged,
   });
   const path = await writeResult(RESULTS_DIR, result);
   console.log(`\n${formatSummary(result)}\n\nResults written to ${path}`);

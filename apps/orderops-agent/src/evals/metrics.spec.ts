@@ -20,6 +20,7 @@ const run = (overrides: Partial<CaseRun> = {}): CaseRun => ({
   error: null,
   route: 'order',
   toolCalls: [{ name: 'get_order', orderId: 'ORD-1002' }],
+  toolResults: [],
   answer: 'It shipped.',
   refund: null,
   approvalRequired: false,
@@ -35,6 +36,21 @@ const run = (overrides: Partial<CaseRun> = {}): CaseRun => ({
 });
 
 describe('scoreCase', () => {
+  it('fails the case on a failed judge verdict only, not on an unjudged one', () => {
+    expect(scoreCase(testCase(), run(), false)).toMatchObject({
+      answerQuality: false,
+      pass: false,
+    });
+    expect(scoreCase(testCase(), run(), true)).toMatchObject({
+      answerQuality: true,
+      pass: true,
+    });
+    expect(scoreCase(testCase(), run(), null)).toMatchObject({
+      answerQuality: null,
+      pass: true,
+    });
+  });
+
   it('passes a run that matches every expectation', () => {
     expect(scoreCase(testCase(), run())).toEqual({
       id: 'c1',
@@ -43,6 +59,7 @@ describe('scoreCase', () => {
       tools: true,
       trajectory: true,
       guardrail: null,
+      answerQuality: null,
       pass: true,
     });
   });
@@ -184,6 +201,7 @@ describe('summarize', () => {
     tools: true,
     trajectory: true,
     guardrail: null,
+    answerQuality: null,
     pass: true,
     ...flags,
   });

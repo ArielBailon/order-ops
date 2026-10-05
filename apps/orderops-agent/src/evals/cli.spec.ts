@@ -1,3 +1,5 @@
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { RunnableLambda } from '@langchain/core/runnables';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +8,7 @@ import {
   buildResult,
   CliError,
   formatSummary,
+  judgeRuns,
   main,
   parseCliArgs,
   readGitSha,
@@ -54,6 +57,34 @@ describe('parseCliArgs', () => {
     bad(['--limit', '0']);
     bad(['--limit', 'x']);
     bad(['--unknown', '1']);
+  });
+
+  it('parses --judge and --judge-provider, which needs --judge', () => {
+    expect(parseCliArgs(['--provider', 'openai', '--judge'])).toEqual({
+      provider: 'openai',
+      judge: true,
+    });
+    expect(
+      parseCliArgs([
+        '--provider',
+        'openai',
+        '--judge',
+        '--judge-provider',
+        'bedrock',
+      ]),
+    ).toEqual({ provider: 'openai', judge: true, judgeProvider: 'bedrock' });
+    expect(() =>
+      parseCliArgs(['--provider', 'openai', '--judge-provider', 'bedrock']),
+    ).toThrow(/needs --judge/);
+    expect(() =>
+      parseCliArgs([
+        '--provider',
+        'openai',
+        '--judge',
+        '--judge-provider',
+        'x',
+      ]),
+    ).toThrow(CliError);
   });
 });
 
@@ -106,6 +137,12 @@ describe('requireCredentials', () => {
       /OPENAI_API_KEY/,
     );
   });
+
+  it('fails before any case when the judge provider has no credential', async () => {
+    await expect(
+      main(['--provider', 'openai', '--judge'], { OPENAI_API_KEY: 'k' }),
+    ).rejects.toThrow(/ANTHROPIC_API_KEY/);
+  });
 });
 
 describe('results file', () => {
@@ -114,6 +151,7 @@ describe('results file', () => {
     error: null,
     route: 'order',
     toolCalls: [{ name: 'get_order', orderId: 'ORD-1002' }],
+    toolResults: ['{"id":"ORD-1002"}'],
     answer: 'It shipped.',
     refund: null,
     approvalRequired: false,
@@ -202,5 +240,87 @@ describe('results file', () => {
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(
       JSON.parse(JSON.stringify(result)),
     );
+  });
+
+  it('has no judge fields without --judge and records them with it', async () => {
+    const { cases, sha256 } = await loadDataset();
+    const selected = cases.slice(0, 2);
+    const base = {
+      runAt: new Date('2026-10-03T17:05:06.789Z'),
+      gitSha: 'abc1234',
+      datasetSha256: sha256,
+      provider: 'openai' as const,
+      cases: selected,
+      runs: selected.map((c) => run({ id: c.id })),
+    };
+
+    const plain = buildResult(base);
+    expect(plain).not.toHaveProperty('judge');
+    expect(plain.summary).not.toHaveProperty('judgeCostUsd');
+    expect(plain.cases[0].scores.answerQuality).toBeNull();
+    expect(plain.summary.metrics.answerQuality.total).toBe(0);
+
+    const outcome = (pass: boolean | null, costUsd: number | null) => ({
+      verdict: null,
+      pass,
+      inputTokens: 1,
+      outputTokens: 1,
+      costUsd,
+    });
+    const judged = buildResult({
+      ...base,
+      judged: {
+        provider: 'anthropic',
+        outcomes: [outcome(true, 0.5), outcome(false, 0.25)],
+      },
+    });
+    expect(judged.judge).toEqual({
+      provider: 'anthropic',
+      model: MODEL_IDS.anthropic.strong,
+      rubricVersion: 1,
+    });
+    expect(judged.summary.judgeCostUsd).toBe(0.75);
+    expect(judged.summary.costUsd).toBe(0.02);
+    expect(judged.cases.map((c) => c.scores.answerQuality)).toEqual([
+      true,
+      false,
+    ]);
+    expect(judged.summary.metrics.answerQuality).toMatchObject({
+      passed: 1,
+      total: 2,
+    });
+    expect(formatSummary(judged)).toContain('judge anthropic');
+  });
+});
+
+describe('judgeRuns', () => {
+  it('judges finished cases with their tool results and skips failed runs', async () => {
+    const { cases } = await loadDataset();
+    const selected = cases.slice(0, 2);
+    const seen: string[] = [];
+    const model = {
+      withStructuredOutput: () =>
+        RunnableLambda.from(async (messages: { content: unknown }[]) => {
+          seen.push(String(messages[1].content));
+          return { relevant: true, grounded: true, appropriate: true };
+        }),
+    } as unknown as BaseChatModel;
+    const finished = {
+      id: selected[0].id,
+      error: null,
+      route: 'order',
+      toolCalls: [],
+      toolResults: ['{"id":"ORD-1002"}'],
+      answer: 'It shipped.',
+    } as unknown as CaseRun;
+    const failed = { ...finished, id: selected[1].id, error: 'Error' };
+
+    const outcomes = await judgeRuns(selected, [finished, failed], model);
+
+    expect(outcomes[0]).toMatchObject({ pass: true });
+    expect(outcomes[1]).toBeNull();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain('{"id":"ORD-1002"}');
+    expect(seen[0]).toContain(selected[0].turns[0]);
   });
 });

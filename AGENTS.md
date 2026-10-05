@@ -369,7 +369,15 @@ until the global npm is updated.
   overall and per category. Each run writes `evals/results/<UTC timestamp>-<provider>.json`
   (summary, per-case flags, answers, tokens, estimated cost, dataset hash, git sha); results
   are meant to be committed. Failed cases do not change the exit code, only a runner or
-  config error does; a single run is a sample, not proof
+  config error does; a single run is a sample, not proof. `--judge` adds an LLM-as-judge
+  answer-quality metric (fixed 3-criterion rubric: relevant, grounded, appropriate) with
+  one extra paid call per case; the judge is the `strong` tier of `--judge-provider`
+  (default `anthropic`, so `ANTHROPIC_API_KEY` is needed) and its cost is reported as
+  `judgeCostUsd`, apart from the agent cost. FAQ answers are not checked for grounding
+  (retrieval context is not captured)
+- Provider comparison: `npm run eval:compare` prints a markdown table of the latest
+  `evals/results/*.json` per provider and writes `evals/COMPARISON.md`; runs on different
+  dataset hashes or judges are flagged as not comparable. Needs no keys
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack

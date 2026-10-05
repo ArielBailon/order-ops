@@ -12,7 +12,7 @@
 - [x] 6. Traces and cost - per-request tracing of agent decisions, tools, tokens, p95 latency and cost per conversation, plus prompt caching
 - [ ] 7. Regression evals - ~40-case eval dataset, tool/trajectory/answer/guardrail metrics, versioned results, CI workflow, and provider comparison table
   - [x] 7a. Eval harness and dataset - ~40-case dataset (normal, out-of-scope, adversarial), a runner that drives the real agent graph against a chosen provider with deterministic fake orders data and in-memory stores, route/tool-selection, trajectory and guardrail metrics, and versioned results in evals/results/*.json
-  - [ ] 7b. Answer quality and provider comparison - LLM-as-judge answer-quality metric with a fixed rubric, and a provider comparison table generated from the versioned results
+  - [x] 7b. Answer quality and provider comparison - LLM-as-judge answer-quality metric with a fixed rubric, and a provider comparison table generated from the versioned results
   - [ ] 7c. Eval CI - GitHub Actions workflow: keyless deterministic subset on pull requests, live-provider run on manual dispatch or schedule with repo secrets and a case/cost cap, and a regression check against the last committed results
 
 ## Post-MVP

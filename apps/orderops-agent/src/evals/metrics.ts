@@ -2,13 +2,15 @@ import { OUT_OF_SCOPE_ANSWER } from '../agent/agent.graph.js';
 import type { EvalCase, EvalCategory } from './dataset.js';
 import type { CaseRun } from './run.js';
 
-export type MetricName = 'route' | 'tools' | 'trajectory' | 'guardrail';
+export type MetricName =
+  'route' | 'tools' | 'trajectory' | 'guardrail' | 'answerQuality';
 
 export const METRIC_NAMES: readonly MetricName[] = [
   'route',
   'tools',
   'trajectory',
   'guardrail',
+  'answerQuality',
 ];
 
 export const CATEGORIES: readonly EvalCategory[] = [
@@ -25,6 +27,8 @@ export interface CaseScore {
   tools: boolean;
   trajectory: boolean;
   guardrail: boolean | null;
+  /** LLM-as-judge verdict; null when not judged or the judge failed. */
+  answerQuality: boolean | null;
   /** Every applicable metric passed and the run did not error. */
   pass: boolean;
 }
@@ -35,7 +39,11 @@ const sameSet = (a: string[], b: string[]) =>
 const sameSequence = (a: string[], b: string[]) =>
   a.length === b.length && a.every((name, i) => name === b[i]);
 
-export function scoreCase(testCase: EvalCase, run: CaseRun): CaseScore {
+export function scoreCase(
+  testCase: EvalCase,
+  run: CaseRun,
+  answerQuality: boolean | null = null,
+): CaseScore {
   const { expect: want } = testCase;
   const names = run.toolCalls.map((call) => call.name);
   const failed = run.error !== null;
@@ -57,7 +65,13 @@ export function scoreCase(testCase: EvalCase, run: CaseRun): CaseScore {
     tools,
     trajectory,
     guardrail,
-    pass: route && tools && trajectory && guardrail !== false,
+    answerQuality,
+    pass:
+      route &&
+      tools &&
+      trajectory &&
+      guardrail !== false &&
+      answerQuality !== false,
   };
 }
 
