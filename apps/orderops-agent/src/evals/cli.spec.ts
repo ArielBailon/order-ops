@@ -59,6 +59,16 @@ describe('parseCliArgs', () => {
     bad(['--unknown', '1']);
   });
 
+  it('parses --max-cost as a positive number of USD', () => {
+    expect(parseCliArgs(['--provider', 'openai', '--max-cost', '1.5'])).toEqual(
+      { provider: 'openai', maxCost: 1.5 },
+    );
+    for (const bad of ['0', '-1', 'abc', ''])
+      expect(() =>
+        parseCliArgs(['--provider', 'openai', '--max-cost', bad]),
+      ).toThrow(/--max-cost/);
+  });
+
   it('parses --judge and --judge-provider, which needs --judge', () => {
     expect(parseCliArgs(['--provider', 'openai', '--judge'])).toEqual({
       provider: 'openai',
@@ -240,6 +250,33 @@ describe('results file', () => {
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(
       JSON.parse(JSON.stringify(result)),
     );
+  });
+
+  it('marks a run cut short by the cost cap and leaves complete runs unmarked', async () => {
+    const { cases, sha256 } = await loadDataset();
+    const base = {
+      runAt: new Date('2026-10-03T17:05:06.789Z'),
+      gitSha: 'abc1234',
+      datasetSha256: sha256,
+      provider: 'openai' as const,
+      cases: cases.slice(0, 2),
+      runs: cases.slice(0, 2).map((c) => run({ id: c.id })),
+    };
+
+    const cut = buildResult({ ...base, selectedCases: 5 });
+    expect(cut.summary).toMatchObject({
+      truncated: true,
+      casesRun: 2,
+      cases: 2,
+    });
+    expect(formatSummary(cut)).toContain('TRUNCATED by --max-cost: 2 cases');
+
+    for (const selectedCases of [undefined, 2]) {
+      const full = buildResult({ ...base, selectedCases });
+      expect(full.summary).not.toHaveProperty('truncated');
+      expect(full.summary).not.toHaveProperty('casesRun');
+      expect(formatSummary(full)).not.toContain('TRUNCATED');
+    }
   });
 
   it('has no judge fields without --judge and records them with it', async () => {

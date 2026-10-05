@@ -27,7 +27,12 @@ import {
   summarize,
   type Summary,
 } from './metrics.js';
-import { type CaseRun, createEvalModels, runCases } from './run.js';
+import {
+  type CaseRun,
+  costCapReached,
+  createEvalModels,
+  runCases,
+} from './run.js';
 
 const PROVIDERS: readonly Provider[] = ['anthropic', 'openai', 'bedrock'];
 
@@ -38,7 +43,7 @@ export const RESULTS_DIR = fileURLToPath(
 );
 
 export const USAGE =
-  'Usage: npm run eval -- --provider anthropic|openai|bedrock [--ids a,b] [--category normal|out_of_scope|adversarial] [--limit N] [--judge [--judge-provider anthropic|openai|bedrock]]';
+  'Usage: npm run eval -- --provider anthropic|openai|bedrock [--ids a,b] [--category normal|out_of_scope|adversarial] [--limit N] [--judge [--judge-provider anthropic|openai|bedrock]] [--max-cost USD]';
 
 /** A bad flag or missing credential; reported as a message, never a stack trace. */
 export class CliError extends Error {
@@ -56,6 +61,8 @@ export interface CliOptions {
   /** Score answer quality with the LLM judge (an extra paid model call per case). */
   judge?: boolean;
   judgeProvider?: Provider;
+  /** Stop once the estimated agent cost passes this many USD; the result is marked truncated. */
+  maxCost?: number;
 }
 
 export function parseCliArgs(argv: string[]): CliOptions {
@@ -70,6 +77,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
         limit: { type: 'string' },
         judge: { type: 'boolean' },
         'judge-provider': { type: 'string' },
+        'max-cost': { type: 'string' },
       },
       strict: true,
     }));
@@ -101,6 +109,12 @@ export function parseCliArgs(argv: string[]): CliOptions {
     if (!Number.isInteger(limit) || limit < 1)
       throw new CliError('--limit must be a positive integer.');
     options.limit = limit;
+  }
+  if (values['max-cost'] !== undefined) {
+    const maxCost = Number(values['max-cost']);
+    if (!Number.isFinite(maxCost) || maxCost <= 0)
+      throw new CliError('--max-cost must be a positive number of USD.');
+    options.maxCost = maxCost;
   }
   if (values.judge) options.judge = true;
   if (values['judge-provider'] !== undefined) {
@@ -160,6 +174,10 @@ export interface ResultSummary extends Summary {
   costUsd: number | null;
   /** Judge model spend, kept apart from the agent cost; present only for judged runs. */
   judgeCostUsd?: number | null;
+  /** Present and true only when `--max-cost` cut the run short; `cases` then counts the cases run. */
+  truncated?: boolean;
+  /** Cases run before the cut; present only when truncated. */
+  casesRun?: number;
 }
 
 export interface ResultCase {
@@ -222,6 +240,8 @@ export function buildResult(input: {
   runs: CaseRun[];
   /** Outcomes parallel to `cases`, from the judge `provider`; omit for an unjudged run. */
   judged?: { provider: Provider; outcomes: (JudgeOutcome | null)[] };
+  /** Cases selected for the run; when more than `runs`, the run was cut short. */
+  selectedCases?: number;
 }): ResultFile {
   const { cases, runs, provider, judged } = input;
   const scores = cases.map((c, i) =>
@@ -253,6 +273,11 @@ export function buildResult(input: {
       outputTokens: runs.reduce((n, run) => n + run.outputTokens, 0),
       cachedTokens: runs.reduce((n, run) => n + run.cachedTokens, 0),
       costUsd: sumCost,
+      ...(input.selectedCases !== undefined &&
+        input.selectedCases > runs.length && {
+          truncated: true,
+          casesRun: runs.length,
+        }),
       ...(judged && {
         judgeCostUsd: judged.outcomes.reduce<number | null>(
           (sum, outcome) =>
@@ -322,6 +347,11 @@ export function formatSummary(result: ResultFile): string {
   const { summary } = result;
   const lines = [
     `provider ${result.provider} (${result.models.cheap} / ${result.models.strong})`,
+    ...(summary.truncated
+      ? [
+          `TRUNCATED by --max-cost: ${summary.casesRun} cases run, the rest skipped`,
+        ]
+      : []),
     `cases ${summary.cases}, errors ${summary.errors}, all metrics pass ${percent(summary.pass)}`,
     ...METRIC_NAMES.map(
       (name) => `  ${name.padEnd(11)} ${percent(summary.metrics[name])}`,
@@ -367,17 +397,24 @@ export async function main(
   };
   const models = createEvalModels(options.provider, providerEnv);
 
+  const { maxCost } = options;
   const runAt = new Date();
-  const runs = await runCases(cases, { models, policies }, (run, i) =>
-    console.log(
-      `[${i + 1}/${cases.length}] ${run.id}${run.error ? ` error: ${run.error}` : ''}`,
-    ),
+  const runs = await runCases(
+    cases,
+    { models, policies },
+    (run, i) =>
+      console.log(
+        `[${i + 1}/${cases.length}] ${run.id}${run.error ? ` error: ${run.error}` : ''}`,
+      ),
+    maxCost === undefined ? undefined : (done) => costCapReached(done, maxCost),
   );
+  // A cost cap can cut the run short: only the cases that ran are judged and recorded.
+  const ran = cases.slice(0, runs.length);
   const judged = options.judge
     ? {
         provider: judgeProvider,
         outcomes: await judgeRuns(
-          cases,
+          ran,
           runs,
           judgeModel ?? createJudgeModel(judgeProvider, providerEnv),
         ),
@@ -388,7 +425,8 @@ export async function main(
     gitSha: readGitSha(),
     datasetSha256: dataset.sha256,
     provider: options.provider,
-    cases,
+    cases: ran,
+    selectedCases: cases.length,
     runs,
     judged,
   });

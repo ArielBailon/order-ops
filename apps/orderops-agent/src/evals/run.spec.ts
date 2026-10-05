@@ -8,7 +8,7 @@ import { RunnableLambda } from '@langchain/core/runnables';
 import { MODEL_IDS } from '../models/providers.js';
 import type { EvalCase } from './dataset.js';
 import { KeywordPolicySearch } from './fakes.js';
-import { runCase, runCases } from './run.js';
+import { type CaseRun, costCapReached, runCase, runCases } from './run.js';
 
 interface Script {
   /** Next reply of the tool loop; receives the messages sent to the model. */
@@ -123,6 +123,45 @@ const orderScript = (seen: BaseMessage[][] = []): Script => ({
 });
 
 const policies = new KeywordPolicySearch([]);
+
+describe('costCapReached', () => {
+  const costing = (...costs: (number | null)[]) =>
+    costs.map((costUsd) => ({ costUsd })) as CaseRun[];
+
+  it('is true only once the total passes the cap', () => {
+    expect(costCapReached(costing(0.4, 0.6), 1)).toBe(false);
+    expect(costCapReached(costing(0.4, 0.6, 0.01), 1)).toBe(true);
+  });
+
+  it('stops when a cost is unknown, since the cap cannot be enforced', () => {
+    expect(costCapReached(costing(0.1, null), 100)).toBe(true);
+  });
+});
+
+describe('runCases stop check', () => {
+  it('skips the cases after the one that makes shouldStop true', async () => {
+    const deps = { models: models(orderScript()), policies };
+    const cases = ['a', 'b', 'c'].map((id) => orderCase({ id }));
+
+    const runs = await runCases(
+      cases,
+      deps,
+      undefined,
+      (done) => done.length >= 2,
+    );
+
+    expect(runs.map((r) => r.id)).toEqual(['a', 'b']);
+  });
+
+  it('runs everything without a stop check', async () => {
+    const deps = { models: models(orderScript()), policies };
+    const runs = await runCases(
+      ['a', 'b'].map((id) => orderCase({ id })),
+      deps,
+    );
+    expect(runs).toHaveLength(2);
+  });
+});
 
 describe('runCase', () => {
   it('captures events, route, tool names and the answer in order', async () => {

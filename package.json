@@ -17,6 +17,7 @@
     "report:traces": "tsx --env-file=.env apps/orderops-agent/src/trace/report-traces.ts",
     "eval": "tsx --env-file=.env --tsconfig apps/orderops-agent/tsconfig.app.json apps/orderops-agent/src/evals/cli.ts",
     "eval:compare": "tsx --tsconfig apps/orderops-agent/tsconfig.app.json apps/orderops-agent/src/evals/compare.ts",
+    "eval:regress": "tsx --tsconfig apps/orderops-agent/tsconfig.app.json apps/orderops-agent/src/evals/regress.ts",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/apps/orderops-agent/main",
     "lint": "oxlint apps/ libs/",

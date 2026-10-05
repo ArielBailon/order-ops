@@ -208,17 +208,35 @@ export async function runCase(
   return run;
 }
 
-/** Cases run one after another; `onCase` reports progress. */
+/**
+ * True once the estimated agent cost of `runs` exceeds `maxCostUsd`. An unpriced model
+ * (null cost) also counts: the cap cannot be enforced, so the run stops.
+ */
+export function costCapReached(runs: CaseRun[], maxCostUsd: number): boolean {
+  let total = 0;
+  for (const run of runs) {
+    if (run.costUsd === null) return true;
+    total += run.costUsd;
+  }
+  return total > maxCostUsd;
+}
+
+/**
+ * Cases run one after another; `onCase` reports progress. `shouldStop` is checked after
+ * each case, and the cases not yet run are then skipped.
+ */
 export async function runCases(
   cases: EvalCase[],
   deps: RunnerDeps,
   onCase?: (run: CaseRun, index: number) => void,
+  shouldStop?: (runs: CaseRun[]) => boolean,
 ): Promise<CaseRun[]> {
   const runs: CaseRun[] = [];
   for (const testCase of cases) {
     const run = await runCase(testCase, deps);
     runs.push(run);
     onCase?.(run, runs.length - 1);
+    if (shouldStop?.(runs)) break;
   }
   return runs;
 }

@@ -1,0 +1,112 @@
+name: Evals
+
+# Pull requests run the keyless, deterministic subset: the eval specs and the regression
+# check over the committed results. The live job spends provider money, so it only runs on
+# manual dispatch or the weekly schedule, with a case cap and an estimated-cost cap, and it
+# never commits or pushes: download the artifact and commit the results by hand.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider under test (anthropic or openai)
+        type: choice
+        options: [anthropic, openai]
+        default: anthropic
+      limit:
+        description: Maximum number of cases to run (the dataset has 41)
+        type: string
+        default: '41'
+      max_cost:
+        description: Stop once the estimated agent cost passes this many USD
+        type: string
+        default: '2.00'
+      judge:
+        description: Also score answer quality with the LLM judge (needs ANTHROPIC_API_KEY, extra cost)
+        type: boolean
+        default: false
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC; scheduled runs use the input defaults below
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # Node's bundled npm 10.9.3 crashes on this project's install.
+      - run: npx -y npm@11 ci
+      # The client is generated and gitignored; generating it needs no database.
+      - run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      - run: npx vitest run apps/orderops-agent/src/evals
+      - run: npm run eval:regress
+
+  live:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: evals-live
+      cancel-in-progress: false
+    env:
+      # Scheduled runs have no inputs, so they take these defaults.
+      PROVIDER: ${{ inputs.provider || 'anthropic' }}
+      LIMIT: ${{ inputs.limit || '41' }}
+      MAX_COST: ${{ inputs.max_cost || '2.00' }}
+      JUDGE: ${{ inputs.judge || 'false' }}
+    steps:
+      - name: Check inputs and secrets
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          case "$PROVIDER" in
+            anthropic|openai) ;;
+            *) echo "provider must be anthropic or openai"; exit 1 ;;
+          esac
+          [[ "$LIMIT" =~ ^[1-9][0-9]*$ ]] || { echo "limit must be a positive integer"; exit 1; }
+          [[ "$MAX_COST" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "max_cost must be a number"; exit 1; }
+          [ "$PROVIDER" = anthropic ] && [ -z "$ANTHROPIC_API_KEY" ] && { echo "Set the ANTHROPIC_API_KEY repository secret"; exit 1; }
+          [ "$PROVIDER" = openai ] && [ -z "$OPENAI_API_KEY" ] && { echo "Set the OPENAI_API_KEY repository secret"; exit 1; }
+          [ "$JUDGE" = true ] && [ -z "$ANTHROPIC_API_KEY" ] && { echo "The judge needs the ANTHROPIC_API_KEY repository secret"; exit 1; }
+          exit 0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npx -y npm@11 ci
+      - run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      - name: Run the evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # The npm script loads .env; real values come from the environment above.
+          touch .env
+          args=(--provider "$PROVIDER" --limit "$LIMIT" --max-cost "$MAX_COST")
+          if [ "$JUDGE" = true ]; then args+=(--judge); fi
+          npm run eval -- "${args[@]}"
+      - run: npm run eval:compare
+      # Compares the new result with the last committed one for the same provider and dataset.
+      - run: npm run eval:regress
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: |
+            evals/results/*.json
+            evals/COMPARISON.md
+          if-no-files-found: ignore

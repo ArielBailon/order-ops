@@ -378,6 +378,20 @@ until the global npm is updated.
 - Provider comparison: `npm run eval:compare` prints a markdown table of the latest
   `evals/results/*.json` per provider and writes `evals/COMPARISON.md`; runs on different
   dataset hashes or judges are flagged as not comparable. Needs no keys
+- Eval cost cap and regression check: `npm run eval -- --max-cost USD` stops after the
+  case that pushes the estimated agent cost past the cap (or when a cost is unknown) and
+  marks the result `truncated` with `casesRun`. `npm run eval:regress [-- --tolerance 0.1]`
+  compares each provider's newest `evals/results/*.json` with its previous run on the same
+  dataset hash, over the shared cases without run errors; exit 1 only when the pass rate
+  fell by more than the tolerance (default 0.10), otherwise 0 (also with no baseline). Needs
+  no keys
+- Eval CI (`.github/workflows/evals.yml`): pull requests run the `deterministic` job (eval
+  specs + `eval:regress`, no secrets, no model calls). The `live` job runs on manual dispatch
+  or weekly (Mondays 06:00 UTC, defaults: anthropic, 41 cases, `max_cost` 2.00, no judge); it
+  needs the repository secrets `ANTHROPIC_API_KEY` (and `OPENAI_API_KEY` for provider
+  openai), runs the evals, `eval:compare` and `eval:regress`, and uploads `evals/results/`
+  and `COMPARISON.md` as the `eval-results` artifact. It never commits: download the
+  artifact and commit the results by hand
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack
