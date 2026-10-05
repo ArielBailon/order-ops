@@ -231,4 +231,57 @@ describe('runCase', () => {
     });
     expect(runs[1]).toMatchObject({ id: 'fast', error: null, route: 'order' });
   });
+
+  it('reuses the open refund request when the customer writes again on a paused thread', async () => {
+    const refundScript: Script = {
+      turn: () => new AIMessage('Noted.'),
+      structured: (name) => {
+        if (name === 'route_message') return { intent: 'refund' };
+        if (name === 'refund_proposal')
+          return {
+            orderId: 'ORD-1001',
+            amount: null,
+            reason: 'Cracked ear cup',
+          };
+        if (name === 'remember_facts') return { facts: [] };
+        throw new Error(`unexpected structured call ${name}`);
+      },
+    };
+    const turn = (message: string) =>
+      runCase(
+        {
+          ...orderCase({ turns: [message] }),
+          expect: { route: 'refund', tools: [] },
+        },
+        { models: models(refundScript), policies },
+      );
+
+    const first = await turn('Refund ORD-1001, the ear cup is cracked.');
+    const both = await runCase(
+      orderCase({
+        turns: [
+          'Refund ORD-1001, the ear cup is cracked.',
+          'Please refund ORD-1001 again, it is still cracked.',
+        ],
+        expect: { route: 'refund', tools: [] },
+      }),
+      { models: models(refundScript), policies },
+    );
+
+    // The first turn alone stores the request and pauses the thread for an operator.
+    expect(first).toMatchObject({
+      error: null,
+      refund: { status: 'pending_approval' },
+      approvalRequired: true,
+    });
+    // A second message on that paused thread starts a new run and reuses the open request.
+    expect(both).toMatchObject({
+      error: null,
+      streamOk: true,
+      route: 'refund',
+      refund: { status: 'pending_approval' },
+      approvalRequired: false,
+    });
+    expect(both.answer).toContain('already has a refund request');
+  });
 });

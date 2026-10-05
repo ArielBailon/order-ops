@@ -9,6 +9,8 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
     super({
       adapter: new PrismaPg({
         connectionString: config.getOrThrow<string>('DATABASE_URL'),
+        // A database that accepts no connections must fail a query, not hang it forever.
+        connectionTimeoutMillis: 10_000,
       }),
     });
   }
