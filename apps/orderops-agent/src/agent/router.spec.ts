@@ -8,7 +8,7 @@ const intentLine = (intent: string) =>
 
 describe('router prompt', () => {
   it('routes refund and cancel-and-refund requests to refund', () => {
-    expect(intentLine('refund')).toMatch(/refund or their money back/);
+    expect(intentLine('refund')).toMatch(/new refund or get their money back/);
     expect(intentLine('refund')).toMatch(
       /cancel an order and get their money back/,
     );
@@ -17,6 +17,12 @@ describe('router prompt', () => {
   it('keeps refund policy questions on faq', () => {
     expect(intentLine('refund')).toMatch(/refund policy itself are "faq"/);
     expect(intentLine('faq')).toMatch(/refunds policy/);
+  });
+
+  it('sends refund status questions to order, not a new refund request', () => {
+    expect(intentLine('refund')).toMatch(
+      /status or outcome of a refund already requested.*is "order", never "refund"/,
+    );
   });
 
   it('sends a bare cancellation to out_of_scope, not refund requests', () => {

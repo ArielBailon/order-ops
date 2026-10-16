@@ -133,7 +133,11 @@ describe('ChatService', () => {
   const orders = { listOrders: vi.fn(), getOrder: vi.fn() };
   const faq = { answer: vi.fn() };
   const memory = { get: vi.fn(), add: vi.fn() };
-  const refunds = { findOpenForOrder: vi.fn(), create: vi.fn() };
+  const refunds = {
+    findOpenForOrder: vi.fn(),
+    hasApprovedForOrder: vi.fn(),
+    create: vi.fn(),
+  };
   const traces = { record: vi.fn() };
   const signal = new AbortController().signal;
 
@@ -183,6 +187,7 @@ describe('ChatService', () => {
     memory.add.mockReset().mockResolvedValue(undefined);
     traces.record.mockReset().mockResolvedValue(undefined);
     refunds.findOpenForOrder.mockReset().mockResolvedValue(null);
+    refunds.hasApprovedForOrder.mockReset().mockResolvedValue(false);
     refunds.create.mockReset().mockResolvedValue({
       ok: true,
       refund: { id: 'ref_new', status: 'pending_approval' },

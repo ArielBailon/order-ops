@@ -9,6 +9,7 @@ export type RefundRuleCode =
   | 'not_delivered'
   | 'window_expired'
   | 'amount_exceeds_total'
+  | 'already_refunded'
   | 'open_request_exists';
 
 export type RefundVerdict = { ok: true } | { ok: false; code: RefundRuleCode };
@@ -41,6 +42,8 @@ export function formatCents(cents: number): string {
 export interface RefundCheck {
   order: Pick<Order, 'status' | 'total' | 'deliveredAt'>;
   amountCents: number;
+  /** An operator already approved a refund for this order. */
+  alreadyRefunded: boolean;
   openRequestExists: boolean;
   now: Date;
 }
@@ -49,6 +52,7 @@ export interface RefundCheck {
 export function evaluateRefund({
   order,
   amountCents,
+  alreadyRefunded,
   openRequestExists,
   now,
 }: RefundCheck): RefundVerdict {
@@ -59,6 +63,7 @@ export function evaluateRefund({
     return { ok: false, code: 'window_expired' };
   if (amountCents > toCents(order.total))
     return { ok: false, code: 'amount_exceeds_total' };
+  if (alreadyRefunded) return { ok: false, code: 'already_refunded' };
   if (openRequestExists) return { ok: false, code: 'open_request_exists' };
   return { ok: true };
 }

@@ -60,6 +60,11 @@ export class InMemoryRefundStore implements RefundStore {
     return row ? { id: row.id, status: 'pending_approval' } : null;
   }
 
+  /** Operator decisions are not part of the eval, so nothing is ever approved. */
+  async hasApprovedForOrder(): Promise<boolean> {
+    return false;
+  }
+
   async create(input: NewRefund): Promise<CreateRefundResult> {
     if (input.status === 'pending_approval') {
       const existing = await this.findOpenForOrder(input.orderId);

@@ -57,6 +57,7 @@ describe('eval dataset', () => {
       const verdict = evaluateRefund({
         order,
         amountCents: toCents(target.amount ?? order.total),
+        alreadyRefunded: false,
         openRequestExists: false,
         now: NOW,
       });

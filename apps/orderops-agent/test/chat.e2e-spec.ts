@@ -69,6 +69,7 @@ describe('gateway chat (e2e)', () => {
       .overrideProvider(REFUND_STORE)
       .useValue({
         findOpenForOrder: async () => null,
+        hasApprovedForOrder: async () => false,
         create: createRefund,
         decide: async () => ({ ok: false, code: 'not_found' }),
         listPending: async () => [],

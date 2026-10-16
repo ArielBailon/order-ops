@@ -58,6 +58,8 @@ export interface PendingRefund {
 
 export interface RefundStore {
   findOpenForOrder(orderId: string): Promise<RefundRecord | null>;
+  /** True when an operator already approved a refund for the order. */
+  hasApprovedForOrder(orderId: string): Promise<boolean>;
   create(input: NewRefund): Promise<CreateRefundResult>;
   /** Moves a pending request to `decision` in one conditional update; an operator cannot decide their own request. */
   decide(input: {
@@ -84,6 +86,13 @@ export class PrismaRefundStore implements RefundStore {
       select: { id: true },
     });
     return row ? { id: row.id, status: 'pending_approval' } : null;
+  }
+
+  async hasApprovedForOrder(orderId: string): Promise<boolean> {
+    const count = await this.prisma.refundRequest.count({
+      where: { orderId, status: 'approved' },
+    });
+    return count > 0;
   }
 
   async create(input: NewRefund): Promise<CreateRefundResult> {

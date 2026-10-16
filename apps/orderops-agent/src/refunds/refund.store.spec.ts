@@ -5,6 +5,7 @@ describe('PrismaRefundStore', () => {
   const refundRequest = {
     create: vi.fn(),
     findFirst: vi.fn(),
+    count: vi.fn(),
     findUnique: vi.fn(),
     findMany: vi.fn(),
     updateMany: vi.fn(),
@@ -121,6 +122,16 @@ describe('PrismaRefundStore', () => {
     expect(await store.findOpenForOrder('ord_1')).toEqual({
       id: 'ref_1',
       status: 'pending_approval',
+    });
+  });
+
+  it('reports whether an order has an approved refund', async () => {
+    refundRequest.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+    expect(await store.hasApprovedForOrder('ord_1')).toBe(true);
+    expect(await store.hasApprovedForOrder('ord_1')).toBe(false);
+    expect(refundRequest.count).toHaveBeenCalledWith({
+      where: { orderId: 'ord_1', status: 'approved' },
     });
   });
 

@@ -83,6 +83,8 @@ const REJECTION_TEXT: Record<
     `Order ${orderId} was delivered more than ${REFUND_WINDOW_DAYS} days ago, so it is outside our ${REFUND_WINDOW_DAYS} day refund window.`,
   amount_exceeds_total: (orderId, total) =>
     `The amount you asked for is higher than the total of order ${orderId} (${total} USD).`,
+  already_refunded: (orderId) =>
+    `Order ${orderId} already has an approved refund, so it cannot be refunded again.`,
 };
 
 export interface RefundRouteInput {
@@ -152,11 +154,13 @@ export async function runRefundRoute(
     : toCents(order.total);
   const amount = formatCents(amountCents);
   const open = await refunds.findOpenForOrder(order.id);
+  const alreadyRefunded = await refunds.hasApprovedForOrder(order.id);
   // No row is written for a client that has already disconnected.
   signal.throwIfAborted();
   const verdict = evaluateRefund({
     order,
     amountCents,
+    alreadyRefunded,
     openRequestExists: open !== null,
     now: now(),
   });

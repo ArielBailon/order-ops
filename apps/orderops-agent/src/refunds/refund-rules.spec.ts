@@ -24,6 +24,7 @@ const check = (overrides: Partial<RefundCheck> = {}) =>
   evaluateRefund({
     order: delivered(),
     amountCents: 8990,
+    alreadyRefunded: false,
     openRequestExists: false,
     now: at(DAY_MS),
     ...overrides,
@@ -99,6 +100,13 @@ describe('evaluateRefund', () => {
     });
   });
 
+  it('rejects when a refund was already approved', () => {
+    expect(check({ alreadyRefunded: true })).toEqual({
+      ok: false,
+      code: 'already_refunded',
+    });
+  });
+
   it('rejects when another request is open', () => {
     expect(check({ openRequestExists: true })).toEqual({
       ok: false,
@@ -123,6 +131,10 @@ describe('evaluateRefund', () => {
     expect(check({ amountCents: 99999, openRequestExists: true })).toEqual({
       ok: false,
       code: 'amount_exceeds_total',
+    });
+    expect(check({ alreadyRefunded: true, openRequestExists: true })).toEqual({
+      ok: false,
+      code: 'already_refunded',
     });
   });
 });

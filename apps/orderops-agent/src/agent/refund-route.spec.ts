@@ -44,6 +44,7 @@ describe('runRefundRoute', () => {
   const orders = { getOrder, listOrders: vi.fn() } as unknown as OrdersClient;
   const refunds = {
     findOpenForOrder: vi.fn(),
+    hasApprovedForOrder: vi.fn(),
     create: vi.fn(),
     decide: vi.fn(),
     listPending: vi.fn(),
@@ -79,6 +80,7 @@ describe('runRefundRoute', () => {
   beforeEach(() => {
     getOrder.mockReset().mockResolvedValue({ ok: true, data: delivered() });
     refunds.findOpenForOrder.mockReset().mockResolvedValue(null);
+    refunds.hasApprovedForOrder.mockReset().mockResolvedValue(false);
     refunds.create
       .mockReset()
       .mockImplementation(async (input: { status: string }) => ({
@@ -148,6 +150,22 @@ describe('runRefundRoute', () => {
       expect(result.answer).not.toMatch(/approved|will be refunded/i);
     },
   );
+
+  it('auto-rejects a new request for an order with an approved refund', async () => {
+    refunds.hasApprovedForOrder.mockResolvedValue(true);
+
+    const result = await run([proposal()]);
+
+    expect(refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'auto_rejected',
+        decisionReason: 'already_refunded',
+      }),
+    );
+    expect(result.refund).toEqual({ id: 'ref_new', status: 'auto_rejected' });
+    expect(result.answer).toContain('already has an approved refund');
+    expect(emit).not.toHaveBeenCalled();
+  });
 
   it('reuses the open request instead of creating another', async () => {
     refunds.findOpenForOrder.mockResolvedValue({
