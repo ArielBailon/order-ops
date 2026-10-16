@@ -16,4 +16,5 @@
   - [x] 7c. Eval CI - GitHub Actions workflow: keyless deterministic subset on pull requests, live-provider run on manual dispatch or schedule with repo secrets and a case/cost cap, and a regression check against the last committed results
 
 ## Post-MVP
-- [ ] 8. AWS deploy - app running on AWS with real metrics documented in the README
+- [x] 8. README and system walkthrough - replace the default NestJS README with project documentation written from the real codebase: what OrderOps is and its architecture (link docs/architecture), prerequisites, step-by-step setup (env, Docker Postgres, migrate and seed, policy ingest), running the three apps, and a guided end-to-end test of the whole system with copy-paste requests (customer login, order lookup, FAQ, out-of-scope refusal, memory across turns, refund request, operator approve/reject and thread resume), plus running the test suites, traces and cost report, evals with comparison and regression, troubleshooting, and a project layout map
+- [ ] 9. AWS deploy - app running on AWS with real metrics documented in the README

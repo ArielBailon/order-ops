@@ -1,6 +1,6 @@
 # OrderOps Agent - Project Overview
 
-<!-- blueprint:source-hash c4cdf81d2c83681e6e56899e3eec4e9fcf3b89755985b17af2856cc3fc6b72e4 -->
+<!-- blueprint:source-hash 60109b4b1c1e64ecdaf7407e68ac3cec4d0a39914137fa0a212b76e8e073e5cf -->
 
 > A support and operations agent for a fictional e-commerce store (NestJS + LangChain.js + LangGraph.js), built as a guided, deliberately scoped learning and portfolio project for production agentic patterns.
 
@@ -35,7 +35,8 @@ Build order from `build-plan.md`. Each item is a large, end-to-end feature (data
 
 Post-MVP:
 
-8. **AWS deploy** - app running on AWS with real metrics (p95 latency, cost per conversation, eval score) in the README.
+8. **README and system walkthrough** - replace the default NestJS README with documentation written from the real codebase: architecture, prerequisites, step-by-step setup (env, Docker Postgres, migrate and seed, policy ingest), running the three apps, and a guided end-to-end test with copy-paste requests (customer login, order lookup, FAQ, out-of-scope refusal, memory across turns, refund request, operator approve/reject and thread resume), plus tests, traces and cost report, evals (run, compare, regress), troubleshooting, and a project layout map.
+9. **AWS deploy** - app running on AWS with real metrics (p95 latency, cost per conversation, eval score) in the README.
 
 Out of scope on purpose: rich frontend, real payments, multi-agent setups, frameworks other than LangChain/LangGraph.
 
@@ -144,7 +145,7 @@ The API contract is the UX:
 
 - **Local** - `docker compose up -d` (Postgres + pgvector on 5432) and the three Nest apps
 - **Env vars** - `DATABASE_URL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (see `.env.example`)
-- **Post-MVP (item 8)** - AWS: App Runner or ECS + RDS (> TODO: decision pending). Budget alert on the AWS account from day one.
+- **Post-MVP (item 9)** - AWS: App Runner or ECS + RDS (> TODO: decision pending). Budget alert on the AWS account from day one.
 
 ## Open questions
 
@@ -159,4 +160,4 @@ The API contract is the UX:
 - **Swagger** - named in UI/UX but not in the tech list (`@nestjs/swagger`).
 - **Evals in CI** - LLM-as-judge and provider comparison need real API keys and cost in CI; secrets and budget handling are not specified (item 7).
 - **Observability tool** - Langfuse vs LangSmith (item 6).
-- **AWS target** - App Runner vs ECS + RDS (item 8).
+- **AWS target** - App Runner vs ECS + RDS (item 9).
