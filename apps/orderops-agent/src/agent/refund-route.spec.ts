@@ -20,13 +20,19 @@ const delivered = (overrides: Partial<Order> = {}): Order => ({
 /** Stand-in model: one prose turn from the tool loop, then scripted structured proposals. */
 const fakeModel = (proposals: unknown[]) => {
   const inputs: unknown[][] = [];
+  const bound: unknown[][] = [];
   const model = {
-    bindTools: () => ({
-      stream: async () =>
-        (async function* () {
-          yield new AIMessageChunk({ content: 'I will approve this for you.' });
-        })(),
-    }),
+    bindTools: (...args: unknown[]) => {
+      bound.push(args);
+      return {
+        stream: async () =>
+          (async function* () {
+            yield new AIMessageChunk({
+              content: 'I will approve this for you.',
+            });
+          })(),
+      };
+    },
     withStructuredOutput: () => ({
       invoke: async (messages: unknown[]) => {
         inputs.push(messages);
@@ -36,7 +42,7 @@ const fakeModel = (proposals: unknown[]) => {
       },
     }),
   } as unknown as BaseChatModel;
-  return { model, inputs };
+  return { model, inputs, bound };
 };
 
 describe('runRefundRoute', () => {
@@ -165,6 +171,14 @@ describe('runRefundRoute', () => {
     expect(result.refund).toEqual({ id: 'ref_new', status: 'auto_rejected' });
     expect(result.answer).toContain('already has an approved refund');
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('does not force a tool call in the proposal loop', async () => {
+    const { model, bound } = fakeModel([proposal()]);
+
+    await run([], { model });
+
+    expect(bound).toEqual([[expect.anything()]]);
   });
 
   it('reuses the open request instead of creating another', async () => {

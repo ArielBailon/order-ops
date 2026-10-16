@@ -60,7 +60,8 @@ export async function runOrderRoute({
     new HumanMessage(message),
   ];
 
-  await runToolLoop(model, messages, tools, signal, emit);
+  // A follow-up has no order data in the thread, so the model must look it up, not guess.
+  await runToolLoop(model, messages, tools, signal, emit, true);
   const answer = await invokeStructured(
     model,
     finalAnswerSchema,
@@ -81,6 +82,7 @@ export async function runToolLoop(
   tools: StructuredToolInterface[],
   signal: AbortSignal,
   emit: (event: AgentEvent) => void,
+  forceFirstToolCall = false,
 ): Promise<void> {
   if (!model.bindTools)
     throw new Error('Chat model does not support tool calling');
@@ -89,7 +91,12 @@ export async function runToolLoop(
   for (let turn = 0; turn < MAX_MODEL_TURNS; turn++) {
     signal.throwIfAborted();
     let full: AIMessageChunk | undefined;
-    for await (const chunk of await toolModel.stream(messages, { signal })) {
+    // `any` makes the provider require a tool call on this turn; later turns may answer in prose.
+    const turnModel =
+      forceFirstToolCall && turn === 0
+        ? model.bindTools(tools, { tool_choice: 'any' })
+        : toolModel;
+    for await (const chunk of await turnModel.stream(messages, { signal })) {
       if (chunk.text) emit({ type: 'token', data: { text: chunk.text } });
       full = full ? full.concat(chunk) : chunk;
     }
