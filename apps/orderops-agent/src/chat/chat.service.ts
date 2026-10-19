@@ -52,6 +52,7 @@ export const threadKey = (customerId: string, threadId: string) =>
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
   private readonly graph;
+  private readonly pendingTraces = new Set<Promise<void>>();
 
   constructor(
     @Inject(CHEAP_MODEL) cheap: BaseChatModel,
@@ -165,10 +166,18 @@ export class ChatService {
       yield out;
     } finally {
       // Not awaited: a slow database must not hold the SSE stream open after `final`.
-      void this.recordTrace(
+      // Tracked so a shutdown can wait for it before the database is disconnected.
+      const write = this.recordTrace(
         collector.toRecord({ customerId, threadId, startedAt }, signal.aborted),
       );
+      this.pendingTraces.add(write);
+      void write.finally(() => this.pendingTraces.delete(write));
     }
+  }
+
+  /** Resolves once the trace writes started so far have settled (they never reject). */
+  async flushTraces(): Promise<void> {
+    await Promise.allSettled(this.pendingTraces);
   }
 
   /** Best-effort: a trace the store cannot write never changes the chat response. */

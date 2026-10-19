@@ -7,10 +7,9 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-05 [P3] open - Trace write for a turn aborted by shutdown races with the database disconnect
+### F-06 [P3] open - Controller `finally { done() }` and the throw path have no test
 
-**File:** apps/orderops-agent/src/chat/sse-connections.ts:21
-**Found:** 2026-10-19 by /implement (fix for F-02; scope: current; lens: quality)
-**Why it matters:** With the stack stopped mid-stream (`docker compose stop orderops-agent`), the gateway logged `trace write failed: PrismaClientKnownRequestError` for the aborted turn. A plain client disconnect with the database alive logs no such warning, and a normal turn writes its trace. Ending the streams lets the server close at once, so `onApplicationShutdown` disconnects Prisma while the aborted turn is still unwinding and its fire-and-forget `recordTrace` runs. The write is best effort and aborted turns write no refund row, so the effect is one lost trace per interrupted turn, not data corruption.
-**Suggested fix:** Have the shutdown hook wait (bounded, for example a few seconds) for the in-flight turns to settle before the server closes, for example by tracking each handler's completion promise next to its response. Needs a small design decision; accept the lost trace until item 10 (observability) if not worth it.
-**Resolution:**
+**File:** apps/orderops-agent/src/chat/chat.controller.ts:60
+**Found:** 2026-10-19 by /audit independent current (scope: current; lens: tests)
+**Why it matters:** The drain depends on the controller calling `done()` on every exit, including when `chat.reply` throws. The unit specs call `done()` by hand, and no spec exercises the controller, so removing the `try/finally` would leave all tests green while shutdown silently waits the full 5 s timeout and then loses the trace race again.
+**Suggested fix:** Add a small controller or e2e test where `chat.reply` throws or the client aborts, asserting the `done` returned by `track` was invoked (or that `beforeApplicationShutdown` resolves without hitting the timeout).

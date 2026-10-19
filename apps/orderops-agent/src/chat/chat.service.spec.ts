@@ -1175,6 +1175,32 @@ describe('ChatService', () => {
       expect(traces.record).toHaveBeenCalledTimes(1);
     });
 
+    it('flushTraces waits for a slow trace write and is immediate when none is pending', async () => {
+      const service = makeService(
+        new FakeChatModel([[text('Your kettle shipped.')]]),
+      );
+      await expect(service.flushTraces()).resolves.toBeUndefined();
+
+      let finish!: () => void;
+      traces.record.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+      );
+      await run(new FakeChatModel([]), 'where is my order?', signal, {}, service);
+
+      let flushed = false;
+      const flush = service.flushTraces().then(() => {
+        flushed = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(flushed).toBe(false);
+
+      finish();
+      await flush;
+      expect(flushed).toBe(true);
+    });
+
     it('stores no message text', async () => {
       await run(
         new FakeChatModel([[text('secret reply')]]),

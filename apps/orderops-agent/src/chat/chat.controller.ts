@@ -49,7 +49,7 @@ export class ChatController {
       Connection: 'keep-alive',
     });
     res.flushHeaders();
-    this.connections.track(res, abort);
+    const done = this.connections.track(res, abort);
 
     const turn = {
       message,
@@ -57,10 +57,14 @@ export class ChatController {
       customerId,
       threadId: threadId ?? randomUUID(),
     };
-    for await (const event of this.chat.reply(turn, abort.signal)) {
-      if (abort.signal.aborted) break;
-      res.write(formatSseEvent(event));
+    try {
+      for await (const event of this.chat.reply(turn, abort.signal)) {
+        if (abort.signal.aborted) break;
+        res.write(formatSseEvent(event));
+      }
+      res.end();
+    } finally {
+      done();
     }
-    res.end();
   }
 }
