@@ -3,7 +3,7 @@
 {$API_DOMAIN} {
 	# /ready queries the database on every call, so it stays internal: the container
 	# healthchecks reach it directly. /health only says the process is up.
-	@ready path /ready
+	@ready path /ready /ready/*
 	respond @ready 404
 
 	# flush_interval -1 sends every SSE event to the client as soon as the gateway writes it.
