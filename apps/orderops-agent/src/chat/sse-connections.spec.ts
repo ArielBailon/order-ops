@@ -50,6 +50,18 @@ describe('SseConnections', () => {
     expect(closed.abort.signal.aborted).toBe(false);
   });
 
+  it('ends a stream that is tracked after shutdown has started', () => {
+    const connections = new SseConnections();
+    connections.beforeApplicationShutdown();
+
+    const late = open(connections);
+
+    expect(late.abort.signal.aborted).toBe(true);
+    expect(late.res.writableEnded).toBe(true);
+    expect(late.res.written).toHaveLength(1);
+    expect(late.res.written[0]).toContain('"code":"shutting_down"');
+  });
+
   it('does not write to a stream that was already ended', () => {
     const connections = new SseConnections();
     const ended = open(connections);

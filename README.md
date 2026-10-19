@@ -525,10 +525,11 @@ gateway, the two internal services, and Postgres + pgvector. Only Caddy publishe
 4. Optional demo data: `... run --rm seed`. It creates the demo customers and operator with the
    shared dev password from [Seed data](#seed-data), so never run it on a host that is
    reachable from the internet unless that is intended.
-5. Check it: `curl -k https://localhost/health` and `curl -k https://localhost/ready` return
-   `{"status":"ok"}`; then log in and chat through `https://localhost` instead of `:3000`.
+5. Check it: `curl -k https://localhost/health` returns `{"status":"ok"}`; then log in and chat
+   through `https://localhost` instead of `:3000`.
 
-`/health` only says the process is up; `/ready` also checks the database. On `SIGTERM`
+`/health` only says the process is up and is public. `/ready` also checks the database, so Caddy
+answers it with 404; the container healthchecks call it directly (`docker compose ps`). On `SIGTERM`
 (`docker compose stop`) the gateway tells every open stream
 `event: error` with `code: "shutting_down"` and ends it, so retry the same message.
 Stop everything with `docker compose -f docker-compose.prod.yml --env-file .env.production down`

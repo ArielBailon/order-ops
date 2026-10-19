@@ -1,10 +1,10 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/client.js';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnApplicationShutdown {
   constructor(config: ConfigService) {
     super({
       adapter: new PrismaPg({
@@ -15,7 +15,8 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
+  /** After the HTTP server has closed, so streams ended by shutdown hooks still reach the database. */
+  async onApplicationShutdown(): Promise<void> {
     await this.$disconnect();
   }
 }

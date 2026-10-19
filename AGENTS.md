@@ -356,7 +356,7 @@ until the global npm is updated.
   `docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build`
   (`migrate` runs first and the apps wait for it). One-off jobs, run with `run --rm`:
   `ingest` (policy index, needs `OPENAI_API_KEY`) and `seed` (dev-password demo data, never
-  automatic). Probes: `GET /health` (process) and `GET /ready` (database) on all three apps;
+  automatic). Probes on all three apps: `GET /health` (process, public) and `GET /ready` (database, answered with 404 by Caddy and used by the container healthchecks);
   internal services bind `127.0.0.1` unless `HOST` is set (compose sets `0.0.0.0`)
 - Traces: every chat request writes a `ChatTrace` with one `LlmCall` per model
   call (provider, model, tokens, cached tokens, latency, estimated USD cost from
