@@ -501,5 +501,35 @@ blueprint/             project plans and workflow files (AI Blueprint)
 
 ## Deployment
 
-An AWS deployment with real metrics is planned (build-plan feature 9). This
-section will document it.
+An AWS deployment with real metrics is planned (build-plan feature 9). The
+container packaging is done and can be rehearsed on any machine with Docker.
+
+### Production compose (local rehearsal)
+
+`docker-compose.prod.yml` runs the production topology: Caddy (TLS) in front of the
+gateway, the two internal services, and Postgres + pgvector. Only Caddy publishes ports
+(80 and 443); Postgres and the internal services stay on the compose network.
+
+1. Copy `.env.production.example` to `.env.production` and fill it in. Use
+   `API_DOMAIN=localhost` to rehearse (Caddy issues a local certificate, so use `curl -k`),
+   a URL-safe `POSTGRES_PASSWORD` (for example `openssl rand -hex 24`), a `JWT_SECRET` of 32+
+   characters and both LLM keys. Leave `AWS_REGION` empty to keep Bedrock off. Compose stops
+   with a clear message when a required value is missing.
+2. Build and start everything:
+   `docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build`.
+   The `migrate` service runs first and exits; the apps start after it succeeds. This order
+   matters: the gateway creates its checkpoint tables at startup, and `prisma migrate deploy`
+   refuses a database that already has tables but no migration history.
+3. Index the policies for the FAQ route (needs `OPENAI_API_KEY`; replaces the whole index):
+   `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm ingest`.
+4. Optional demo data: `... run --rm seed`. It creates the demo customers and operator with the
+   shared dev password from [Seed data](#seed-data), so never run it on a host that is
+   reachable from the internet unless that is intended.
+5. Check it: `curl -k https://localhost/health` and `curl -k https://localhost/ready` return
+   `{"status":"ok"}`; then log in and chat through `https://localhost` instead of `:3000`.
+
+`/health` only says the process is up; `/ready` also checks the database. On `SIGTERM`
+(`docker compose stop`) the gateway tells every open stream
+`event: error` with `code: "shutting_down"` and ends it, so retry the same message.
+Stop everything with `docker compose -f docker-compose.prod.yml --env-file .env.production down`
+(add `-v` to delete the database volume).

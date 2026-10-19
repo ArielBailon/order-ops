@@ -8,6 +8,7 @@ import { TraceModule } from '../trace/trace.module.js';
 import { ChatController } from './chat.controller.js';
 import { ChatService } from './chat.service.js';
 import { OrdersClient } from './orders.client.js';
+import { SseConnections } from './sse-connections.js';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { OrdersClient } from './orders.client.js';
     TraceModule,
   ],
   controllers: [ChatController],
-  providers: [ChatService, OrdersClient],
+  providers: [ChatService, OrdersClient, SseConnections],
   exports: [ChatService],
 })
 export class ChatModule {}

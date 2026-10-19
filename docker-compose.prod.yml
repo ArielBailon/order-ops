@@ -1,0 +1,156 @@
+# Production topology on one host: Caddy -> gateway -> internal services -> Postgres.
+# Only Caddy publishes ports. See .env.production.example for the variables.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# `migrate` runs first on every `up` and the apps wait for it to finish. That order matters:
+# the gateway creates its checkpoint tables at startup, and `prisma migrate deploy` refuses a
+# database that already has tables but no migration history (P3005). `ingest` and `seed` are
+# one-off jobs (profile `jobs`): they never start with `up`; run them with `run --rm`.
+
+x-app: &app
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 30s
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+x-db-env: &db-env
+  DATABASE_URL: postgresql://orderops:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/orderops?schema=public
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (32+ characters)}
+
+x-tools: &tools
+  image: ${REGISTRY:-orderops}/tools:${TAG:-local}
+  build:
+    context: .
+    target: tools
+  depends_on:
+    postgres:
+      condition: service_healthy
+  environment: *db-env
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: orderops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: orderops
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderops -d orderops"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  orders-service:
+    <<: *app
+    image: ${REGISTRY:-orderops}/orders-service:${TAG:-local}
+    build:
+      context: .
+      target: runtime
+      args:
+        APP: orders-service
+    environment:
+      <<: *db-env
+      HOST: 0.0.0.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  customers-service:
+    <<: *app
+    image: ${REGISTRY:-orderops}/customers-service:${TAG:-local}
+    build:
+      context: .
+      target: runtime
+      args:
+        APP: customers-service
+    environment:
+      <<: *db-env
+      HOST: 0.0.0.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  orderops-agent:
+    <<: *app
+    image: ${REGISTRY:-orderops}/orderops-agent:${TAG:-local}
+    build:
+      context: .
+      target: runtime
+      args:
+        APP: orderops-agent
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      orders-service:
+        condition: service_healthy
+      customers-service:
+        condition: service_healthy
+    environment:
+      <<: *db-env
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY}
+      # Empty keeps Bedrock off. No AWS access keys are passed: on EC2 the instance role is used.
+      AWS_REGION: ${AWS_REGION:-}
+      ORDERS_SERVICE_URL: http://orders-service:3001
+      CUSTOMERS_SERVICE_URL: http://customers-service:3002
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      orderops-agent:
+        condition: service_healthy
+
+  # Applies pending Prisma migrations, then exits. Idempotent, so it is safe on every `up`.
+  migrate:
+    <<: *tools
+    restart: "no"
+    command: ["npx", "prisma", "migrate", "deploy"]
+
+  # Embeds apps/orderops-agent/policies/*.md into pgvector (replaces the whole index).
+  # Calls tsx directly: the npm script reads a .env file that does not exist in the container.
+  ingest:
+    <<: *tools
+    profiles: [jobs]
+    environment:
+      <<: *db-env
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY}
+    command: ["npx", "tsx", "apps/orderops-agent/src/faq/ingest-policies.ts"]
+
+  # Demo customers and operator share the dev password: run by hand, never automatically.
+  seed:
+    <<: *tools
+    profiles: [jobs]
+    command: ["npx", "prisma", "db", "seed"]
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:

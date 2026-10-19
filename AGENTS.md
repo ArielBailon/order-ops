@@ -351,6 +351,13 @@ until the global npm is updated.
   on a different request is left alone)
 - Build: `npx nest build <app>` (`npm run build` builds only `orderops-agent`)
 - Production server (gateway): `npm run build && npm run start:prod`
+- Production compose (`docker-compose.prod.yml`; Caddy + gateway + two services + Postgres,
+  built from the one `Dockerfile`): copy `.env.production.example` to `.env.production`, then
+  `docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build`
+  (`migrate` runs first and the apps wait for it). One-off jobs, run with `run --rm`:
+  `ingest` (policy index, needs `OPENAI_API_KEY`) and `seed` (dev-password demo data, never
+  automatic). Probes: `GET /health` (process) and `GET /ready` (database) on all three apps;
+  internal services bind `127.0.0.1` unless `HOST` is set (compose sets `0.0.0.0`)
 - Traces: every chat request writes a `ChatTrace` with one `LlmCall` per model
   call (provider, model, tokens, cached tokens, latency, estimated USD cost from
   `models/pricing.ts`; metadata only, no message text). `npm run report:traces

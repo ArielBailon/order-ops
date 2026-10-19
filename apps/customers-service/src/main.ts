@@ -4,9 +4,10 @@ import { CustomersServiceModule } from './customers-service.module.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(CustomersServiceModule);
+  app.enableShutdownHooks();
   await app.listen(
     app.get(ConfigService).getOrThrow<number>('CUSTOMERS_SERVICE_PORT'),
-    '127.0.0.1',
+    app.get(ConfigService).getOrThrow<string>('HOST'),
   );
 }
 await bootstrap();

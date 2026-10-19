@@ -20,11 +20,15 @@ import {
   formatSseEvent,
 } from './chat.schemas.js';
 import { ChatService } from './chat.service.js';
+import { SseConnections } from './sse-connections.js';
 
 @Controller('chat')
 @UseGuards(JwtAuthGuard)
 export class ChatController {
-  constructor(private readonly chat: ChatService) {}
+  constructor(
+    private readonly chat: ChatService,
+    private readonly connections: SseConnections,
+  ) {}
 
   @Post()
   async stream(
@@ -45,6 +49,7 @@ export class ChatController {
       Connection: 'keep-alive',
     });
     res.flushHeaders();
+    this.connections.track(res, abort);
 
     const turn = {
       message,

@@ -44,7 +44,10 @@ export type FinalReply = FinalAnswer & {
 
 export type ToolName = 'list_orders' | 'get_order';
 
-export type ChatErrorCode = 'agent_error' | 'invalid_output';
+export type ChatErrorCode =
+  | 'agent_error'
+  | 'invalid_output'
+  | 'shutting_down';
 
 /** Sent once, right before `final`, when a new refund request waits for an operator. */
 export interface ApprovalRequired {
@@ -74,6 +77,7 @@ export const CHAT_ERROR_MESSAGES: Record<ChatErrorCode, string> = {
   agent_error: 'The assistant could not answer right now. Please try again.',
   invalid_output:
     'The assistant could not produce a valid answer. Please try again.',
+  shutting_down: 'The assistant is restarting. Please send your message again.',
 };
 
 export function formatSseEvent({ type, data }: ChatEvent): string {

@@ -1,0 +1,19 @@
+# Keep secrets, local state and workflow files out of the build context.
+.env
+.env.*
+!.env.production.example
+.git
+.github
+.claude
+.vscode
+node_modules
+dist
+coverage
+blueprint
+docs
+evals/results
+prototypes
+*.log
+Dockerfile
+.dockerignore
+docker-compose*.yml
