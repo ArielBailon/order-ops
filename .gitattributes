@@ -1,0 +1,2 @@
+# Host scripts and systemd units run on Linux: keep LF line endings on every checkout.
+deploy/* text eol=lf
