@@ -1,6 +1,6 @@
 # OrderOps Agent - Project Overview
 
-<!-- blueprint:source-hash 60109b4b1c1e64ecdaf7407e68ac3cec4d0a39914137fa0a212b76e8e073e5cf -->
+<!-- blueprint:source-hash 1af9aed5bdc52ac7da55471acb3ebd56b8db20714104b4d1979e35ed74d498fa -->
 
 > A support and operations agent for a fictional e-commerce store (NestJS + LangChain.js + LangGraph.js), built as a guided, deliberately scoped learning and portfolio project for production agentic patterns.
 
@@ -36,7 +36,17 @@ Build order from `build-plan.md`. Each item is a large, end-to-end feature (data
 Post-MVP:
 
 8. **README and system walkthrough** - replace the default NestJS README with documentation written from the real codebase: architecture, prerequisites, step-by-step setup (env, Docker Postgres, migrate and seed, policy ingest), running the three apps, and a guided end-to-end test with copy-paste requests (customer login, order lookup, FAQ, out-of-scope refusal, memory across turns, refund request, operator approve/reject and thread resume), plus tests, traces and cost report, evals (run, compare, regress), troubleshooting, and a project layout map.
-9. **AWS deploy** - app running on AWS with real metrics (p95 latency, cost per conversation, eval score) in the README.
+9. **Production deploy on AWS** - the three apps and Postgres on one EC2 instance behind HTTPS, Bedrock via the instance IAM role, logs in CloudWatch, and an automated release path.
+   - **9a. Containers and production compose** - multi-stage Dockerfiles, production docker-compose (apps, Postgres + pgvector, Caddy with automatic TLS), production env validation, `/health` and `/ready`, migrations and policy ingest as one-off jobs, graceful shutdown that closes open SSE streams.
+   - **9b. AWS infrastructure** - EC2 (t4g/t3.small) with an IAM role scoped to `bedrock:InvokeModel*` (no access keys on the server), security group exposing only 80/443, Elastic IP, DNS for `api.arielbailon.dev` (Cloudflare, DNS-only), awslogs to CloudWatch with retention, AWS Budgets alert, nightly `pg_dump` to S3, documented in `docs/deploy.md`.
+   - **9c. CI/CD pipeline** - PR CI (lint, typecheck, unit tests, e2e against a pgvector service container, Prisma migration check, keyless eval subset with the regression check as a gate, Docker build) extending the existing evals workflow; CD on main (OIDC to AWS, images to ECR tagged with commit SHA, deploy over SSM, migrate, smoke test with `/health` and one real chat request, automatic rollback to the previous SHA), with a concurrency guard and a protected production environment.
+10. **Observability API and tracing** - read-only endpoints on the existing trace report logic (summary metrics, trace list with filters, trace detail, latest eval results per provider), a `trace` SSE event closing each reply (route, tools, provider, failover, tokens, cost, latency), per-node spans to Langfuse Cloud under the same trace id as `ChatTrace`, and a read-only `viewer` role.
+11. **Demo console** - Next.js app in `/web` (own package.json, Vercel with Root Directory = `web`, `demo.arielbailon.dev`) that makes agent behavior visible.
+    - **11a. Customer chat with agent timeline** - one-click login as seeded demo customers, SSE chat, live per-message side panel (route, tools, provider/model, failover, tokens, cost, latency).
+    - **11b. Operator console** - pending refunds, approve/reject that resumes the customer thread, result shown in the customer chat.
+    - **11c. Observability dashboard** - p50/p95 latency by route, cost per conversation, tokens by model, cached-token share, error and failover rate, trace explorer linking to Langfuse, eval scorecard by provider.
+12. **Public demo hardening** - per-IP rate limiting, daily token/cost budget that switches the agent to a fixed reply, CORS locked to the console origin, nightly reset of demo data (orders, refunds, threads), demo credentials on the login screen.
+13. **Showcase** - 2-minute demo video, "Live demo" README section with screenshots and real production metrics (p95, cost per conversation, eval scores), portfolio link replacing the "in progress" placeholder.
 
 Out of scope on purpose: rich frontend, real payments, multi-agent setups, frameworks other than LangChain/LangGraph.
 
@@ -122,8 +132,10 @@ Types are TypeScript-level; exact persistence (Prisma table vs. in-memory mock v
 - **PostgreSQL 16 + pgvector** (Docker, `pgvector/pgvector:pg16`) - app data, vectors, checkpoints
 - **Prisma 7** - app data access (config `prisma7.config.ts`)
 - **LLM providers** - Anthropic (default), OpenAI, AWS Bedrock
-- **Observability** - Langfuse or LangSmith (> TODO: decision pending)
+- **Observability** - own traces in Postgres (`ChatTrace`/`LlmCall`) for metrics and the console, plus Langfuse Cloud for per-node span trees
 - **Evals/CI** - custom eval runner + GitHub Actions
+- **CI/CD** - GitHub Actions with OIDC to AWS, ECR, deploy over SSM
+- **Frontend** - Next.js demo console in `/web`, deployed on Vercel
 - **Vitest** - unit and e2e tests; **oxlint** - lint
 - **SSE** - response streaming
 
@@ -133,7 +145,7 @@ Not applicable - learning/portfolio project.
 
 ## UI/UX
 
-API-first. Interaction through curl/HTTP clients and Swagger; optionally one minimal HTML page to watch SSE streaming.
+API-first. Interaction through curl/HTTP clients and Swagger; optionally one minimal HTML page to watch SSE streaming. A Next.js demo console (customer chat with agent timeline, operator approvals, observability dashboard) is planned post-MVP (items 10-12) so reviewers can see the agent's decisions, cost and latency.
 
 The API contract is the UX:
 
@@ -145,7 +157,9 @@ The API contract is the UX:
 
 - **Local** - `docker compose up -d` (Postgres + pgvector on 5432) and the three Nest apps
 - **Env vars** - `DATABASE_URL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (see `.env.example`)
-- **Post-MVP (item 9)** - AWS: App Runner or ECS + RDS (> TODO: decision pending). Budget alert on the AWS account from day one.
+- **Post-MVP AWS (item 9)** - single EC2 instance (t4g/t3.small) running docker compose (three Nest apps, Postgres + pgvector, Caddy with automatic TLS) at `api.arielbailon.dev`; Bedrock through the instance IAM role; logs in CloudWatch; nightly `pg_dump` to S3; AWS Budgets alert from day one; health paths `/health` and `/ready`.
+- **Post-MVP console (item 11)** - Next.js on Vercel at `demo.arielbailon.dev`.
+- **Why not ECS Fargate + RDS + ALB** - cost for a demo; it is the documented next step to scale.
 
 ## Open questions
 
@@ -159,5 +173,4 @@ The API contract is the UX:
 - **Long-term memory store** - LangGraph `PostgresStore` or a Prisma table? (item 3)
 - **Swagger** - named in UI/UX but not in the tech list (`@nestjs/swagger`).
 - **Evals in CI** - LLM-as-judge and provider comparison need real API keys and cost in CI; secrets and budget handling are not specified (item 7).
-- **Observability tool** - Langfuse vs LangSmith (item 6).
-- **AWS target** - App Runner vs ECS + RDS (item 9).
+- **Frontend scope conflict** - project-plan section 3 still says "Out of scope on purpose: rich frontend", while section 7 and build-plan items 10-12 add a Next.js demo console. Reword the out-of-scope line in the plan.

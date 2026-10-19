@@ -35,16 +35,20 @@ Out of scope on purpose: rich frontend, real payments, multi-agent setups, frame
 - Validation: Zod.
 - Database: PostgreSQL + pgvector (Docker), Prisma for app data.
 - LLM providers: Anthropic (default), OpenAI, AWS Bedrock.
-- Observability: Langfuse or LangSmith (decision pending).
+- Observability: own traces in Postgres (ChatTrace/LlmCall) for metrics and the console, plus Langfuse Cloud for per-node span trees.
 - Evals/CI: custom eval runner + GitHub Actions.
+- CI/CD: GitHub Actions with OIDC to AWS, ECR, deploy over SSM.
+- Frontend: Next.js demo console in `/web`, deployed on Vercel.
 - Streaming: SSE.
 
 ## 6. Monetize
 Not applicable — learning/portfolio project.
 
 ## 7. UI/UX
-API-first. Interaction via curl/HTTP client and Swagger; optionally a single minimal HTML page to watch SSE streaming. The "UX" that matters is the API contract: clear SSE event types (token, tool_call, approval_required, final, error) and predictable error/refusal responses.
+API-first. Interaction via curl/HTTP client and Swagger; optionally a single minimal HTML page to watch SSE streaming. The "UX" that matters is the API contract: clear SSE event types (token, tool_call, approval_required, final, error) and predictable error/refusal responses. A Next.js demo console (customer chat with agent timeline, operator approvals, observability dashboard) is planned post-MVP so reviewers can see the agent's decisions, cost and latency.
 
 ## 8. Deployment
 - Local: `docker compose` (Postgres + pgvector) and the three Nest apps.
-- Optional (post-MVP): AWS deployment (App Runner or ECS + RDS — decision pending) with real metrics (p95 latency, cost per conversation, eval score) documented in the README. Budget alert configured on the AWS account from day one.
+- Post-MVP, AWS: a single EC2 instance (t4g/t3.small) running docker compose (three Nest apps, Postgres + pgvector, Caddy with automatic TLS) at api.arielbailon.dev. Bedrock is called through the instance IAM role, logs go to CloudWatch, a nightly pg_dump goes to S3, and an AWS Budgets alert is configured from day one. Real metrics (p95 latency, cost per conversation, eval score) are documented in the README.
+- Post-MVP, console: the Next.js demo console runs on Vercel at demo.arielbailon.dev.
+- Why not ECS Fargate + RDS + ALB: cost for a demo. It is the documented next step to scale.
