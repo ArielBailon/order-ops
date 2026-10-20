@@ -18,7 +18,10 @@ trap 'rm -f "$tmp"' EXIT
 
 # pipefail already failed the run if pg_dump did; also refuse a dump that is not a real one.
 gzip -t "$tmp"
-if ! gunzip -c "$tmp" | head -n 20 | grep -q "PostgreSQL database dump"; then
+# Read the header into a variable first: `grep -q` closing the pipe early makes gunzip exit
+# with SIGPIPE, which pipefail would turn into a false "not a pg_dump" on any non-tiny dump.
+header="$(gunzip -c "$tmp" 2>/dev/null | head -n 20 || true)"
+if ! grep -q "PostgreSQL database dump" <<<"$header"; then
   echo "backup refused: output does not look like a pg_dump" >&2
   exit 1
 fi
