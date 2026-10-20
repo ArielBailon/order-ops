@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly OrderOps database backup to S3
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ec2-user
+# Assumes the repository is cloned at /home/ec2-user/order-ops (see docs/deploy.md).
+WorkingDirectory=/home/ec2-user/order-ops
+EnvironmentFile=/home/ec2-user/order-ops/deploy/backup.env
+ExecStart=/home/ec2-user/order-ops/deploy/backup.sh

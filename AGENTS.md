@@ -358,6 +358,12 @@ until the global npm is updated.
   `ingest` (policy index, needs `OPENAI_API_KEY`) and `seed` (dev-password demo data, never
   automatic). Probes on all three apps: `GET /health` (process, public) and `GET /ready` (database, answered with 404 by Caddy and used by the container healthchecks);
   internal services bind `127.0.0.1` unless `HOST` is set (compose sets `0.0.0.0`)
+- AWS (single EC2 instance, region `us-east-1`; runbook `docs/deploy.md`): add the overlay
+  `-f docker-compose.aws.yml` to send logs to CloudWatch (`LOG_REGION`, `LOG_GROUP`);
+  `deploy/bootstrap.sh` sets up the host, `deploy/backup.sh` + `deploy/orderops-backup.timer`
+  take the nightly `pg_dump` to S3 (`deploy/backup.env`, git-ignored). The instance IAM role is the
+  only AWS credential: no access keys on the host. Creating or changing AWS or Cloudflare
+  resources always needs the user's explicit yes per command group
 - Traces: every chat request writes a `ChatTrace` with one `LlmCall` per model
   call (provider, model, tokens, cached tokens, latency, estimated USD cost from
   `models/pricing.ts`; metadata only, no message text). `npm run report:traces

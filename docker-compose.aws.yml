@@ -1,0 +1,42 @@
+# CloudWatch Logs overlay for the production compose on EC2. Use it on top of the base file:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.aws.yml --env-file .env.production up -d
+# The log group must already exist (docs/deploy.md creates it with a 30-day retention) and
+# the instance role must allow logs:CreateLogStream and logs:PutLogEvents on it. Docker
+# reads the instance role itself, so no AWS keys go into any container or file.
+
+x-log-options: &log-options
+  awslogs-region: ${LOG_REGION:-us-east-1}
+  awslogs-group: ${LOG_GROUP:-/orderops/prod}
+  awslogs-create-group: "false"
+
+services:
+  postgres:
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-options
+        awslogs-stream: postgres
+  orders-service:
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-options
+        awslogs-stream: orders-service
+  customers-service:
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-options
+        awslogs-stream: customers-service
+  orderops-agent:
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-options
+        awslogs-stream: orderops-agent
+  caddy:
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-options
+        awslogs-stream: caddy

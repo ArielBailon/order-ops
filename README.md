@@ -502,7 +502,10 @@ blueprint/             project plans and workflow files (AI Blueprint)
 ## Deployment
 
 An AWS deployment with real metrics is planned (build-plan feature 9). The
-container packaging is done and can be rehearsed on any machine with Docker.
+container packaging is done and can be rehearsed on any machine with Docker. The
+step-by-step runbook for the single-instance AWS setup (EC2, CloudWatch logs, S3
+backups, budget alert, Cloudflare DNS) is [docs/deploy.md](docs/deploy.md); the
+host files it uses are in `deploy/` and `docker-compose.aws.yml`.
 
 ### Production compose (local rehearsal)
 
