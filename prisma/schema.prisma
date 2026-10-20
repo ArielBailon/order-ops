@@ -41,6 +41,7 @@ model Customer {
   tier         CustomerTier @default(standard)
   role         UserRole     @default(customer)
   passwordHash String
+  driftProbe   String?
   createdAt    DateTime     @default(now())
   orders       Order[]
   memory       UserMemory?
