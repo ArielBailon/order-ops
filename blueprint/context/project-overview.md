@@ -1,6 +1,6 @@
 # OrderOps Agent - Project Overview
 
-<!-- blueprint:source-hash 1af9aed5bdc52ac7da55471acb3ebd56b8db20714104b4d1979e35ed74d498fa -->
+<!-- blueprint:source-hash d9507d13bcd95c5f0959a57ea1e276ad867837df5cb91d9c68fd8e50d302d323 -->
 
 > A support and operations agent for a fictional e-commerce store (NestJS + LangChain.js + LangGraph.js), built as a guided, deliberately scoped learning and portfolio project for production agentic patterns.
 
@@ -39,7 +39,8 @@ Post-MVP:
 9. **Production deploy on AWS** - the three apps and Postgres on one EC2 instance behind HTTPS, Bedrock via the instance IAM role, logs in CloudWatch, and an automated release path.
    - **9a. Containers and production compose** - multi-stage Dockerfiles, production docker-compose (apps, Postgres + pgvector, Caddy with automatic TLS), production env validation, `/health` and `/ready`, migrations and policy ingest as one-off jobs, graceful shutdown that closes open SSE streams.
    - **9b. AWS infrastructure** - EC2 (t4g/t3.small) with an IAM role scoped to `bedrock:InvokeModel*` (no access keys on the server), security group exposing only 80/443, Elastic IP, DNS for `api.arielbailon.dev` (Cloudflare, DNS-only), awslogs to CloudWatch with retention, AWS Budgets alert, nightly `pg_dump` to S3, documented in `docs/deploy.md`.
-   - **9c. CI/CD pipeline** - PR CI (lint, typecheck, unit tests, e2e against a pgvector service container, Prisma migration check, keyless eval subset with the regression check as a gate, Docker build) extending the existing evals workflow; CD on main (OIDC to AWS, images to ECR tagged with commit SHA, deploy over SSM, migrate, smoke test with `/health` and one real chat request, automatic rollback to the previous SHA), with a concurrency guard and a protected production environment.
+   - **9c. PR CI pipeline** - PR CI (lint, typecheck, unit tests, e2e against a pgvector service container, Prisma migration check, keyless eval subset with the regression check as a gate, Docker build) extending the existing evals workflow.
+   - **9d. CD on main** - OIDC to AWS with no long-lived keys, images to ECR tagged with the commit SHA, deploy over SSM, migrate, smoke test with `/health` and one real chat request, automatic rollback to the previous SHA, with a concurrency guard and a protected production environment.
 10. **Observability API and tracing** - read-only endpoints on the existing trace report logic (summary metrics, trace list with filters, trace detail, latest eval results per provider), a `trace` SSE event closing each reply (route, tools, provider, failover, tokens, cost, latency), per-node spans to Langfuse Cloud under the same trace id as `ChatTrace`, and a read-only `viewer` role.
 11. **Demo console** - Next.js app in `/web` (own package.json, Vercel with Root Directory = `web`, `demo.arielbailon.dev`) that makes agent behavior visible.
     - **11a. Customer chat with agent timeline** - one-click login as seeded demo customers, SSE chat, live per-message side panel (route, tools, provider/model, failover, tokens, cost, latency).

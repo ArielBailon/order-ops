@@ -1,0 +1,99 @@
+name: CI
+
+# Pull requests run the project's own checks: lint, typecheck, unit tests, e2e tests with a
+# Prisma migration check against a real pgvector Postgres, and a Docker build of every image
+# target. The keyless eval gate lives in evals.yml (its `deterministic` job also runs on every
+# pull request), so it is not repeated here. Nothing in this workflow pushes an image or
+# touches AWS or any secret: deploys are a separate, later workflow.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # Node's bundled npm 10.9.3 crashes on this project's install.
+      - run: npx -y npm@11 ci
+      # The client is generated and gitignored; generating it needs no database.
+      - run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      - run: npm run lint
+      # The rspack build only transpiles, so type errors need tsc.
+      - name: Typecheck orderops-agent
+        run: npx tsc -p apps/orderops-agent/tsconfig.app.json --noEmit
+      - name: Typecheck orders-service
+        run: npx tsc -p apps/orders-service/tsconfig.app.json --noEmit
+      - name: Typecheck customers-service
+        run: npx tsc -p apps/customers-service/tsconfig.app.json --noEmit
+      - name: Typecheck spec and e2e files
+        run: npm run typecheck:spec
+      - run: npm test
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: orderops
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: orderops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U orderops -d orderops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://orderops:ci-only-password@localhost:5432/orderops?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npx -y npm@11 ci
+      - run: npx prisma generate
+      - name: Apply the migrations to an empty database
+        run: npx prisma migrate deploy
+      # Exit code 2 means the schema differs from what the migrations build: a schema change
+      # was committed without its migration.
+      - name: Check the schema has no changes without a migration
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+      - run: npm run test:e2e
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [orderops-agent, orders-service, customers-service, tools]
+    steps:
+      - uses: actions/checkout@v4
+      # Builds only; nothing is pushed. `tools` is the migrate, ingest and seed image.
+      - name: Build the image
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          if [ "$IMAGE" = tools ]; then
+            docker build --target tools -t orderops/tools:ci .
+          else
+            docker build --target runtime --build-arg APP="$IMAGE" -t "orderops/$IMAGE:ci" .
+          fi

@@ -405,6 +405,13 @@ until the global npm is updated.
   openai), runs the evals, `eval:compare` and `eval:regress`, and uploads `evals/results/`
   and `COMPARISON.md` as the `eval-results` artifact. It never commits: download the
   artifact and commit the results by hand
+- PR CI (`.github/workflows/ci.yml`, pull requests only, no secrets): `checks` (lint, the three app
+  typechecks, `typecheck:spec`, `npm test`), `integration` (pgvector Postgres service container,
+  `prisma migrate deploy`, a schema-drift check with `prisma migrate diff --from-config-datasource
+  --to-schema prisma/schema.prisma --exit-code` that fails when a schema change has no migration, then
+  `npm run test:e2e`) and `docker` (builds the three runtime images and `tools`, no push). The eval
+  gate is the `deterministic` job in `evals.yml`. Requiring these checks before merge is a GitHub
+  repository setting (branch protection or a ruleset), not part of the files
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack

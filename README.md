@@ -397,6 +397,11 @@ Cora has no orders.
 The tests do not need the database or any API key. There is no combined
 `verify` command yet.
 
+On every pull request GitHub Actions runs these checks (`.github/workflows/ci.yml`: `checks`,
+`integration` with a pgvector Postgres and a migration drift check, and `docker`) plus the keyless
+eval gate from `evals.yml`. To block merging until they pass, require them in the repository's
+branch protection or ruleset settings on GitHub.
+
 ## Traces and cost
 
 Every chat request writes a `ChatTrace` with one `LlmCall` per model call
