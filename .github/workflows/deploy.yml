@@ -79,7 +79,7 @@ jobs:
           # a copy because that checkout rewrites deploy/ underneath it.
           remote_deploy() {
             local sha="$1" flag="${2:-}" cmd id status params="$RUNNER_TEMP/ssm-params.json"
-            cmd="sudo -u ec2-user -H bash -c 'cd /home/ec2-user/order-ops && git fetch --quiet origin && git checkout --quiet --detach $sha && cp deploy/deploy.sh /tmp/orderops-deploy.sh && APP_DIR=\$PWD AWS_REGION=$AWS_REGION bash /tmp/orderops-deploy.sh $sha $flag'"
+            cmd="sudo -u ec2-user -H bash -c 'cd /home/ec2-user/order-ops && git fetch --quiet origin && git checkout --quiet --detach $sha && f=\$(mktemp) && cp deploy/deploy.sh \"\$f\" && APP_DIR=\$PWD AWS_REGION=$AWS_REGION bash \"\$f\" $sha $flag; rc=\$?; rm -f \"\$f\"; exit \$rc'"
             CMD="$cmd" node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({commands: [process.env.CMD]}))' "$params"
             id="$(aws ssm send-command --instance-ids "$INSTANCE_ID" \
               --document-name AWS-RunShellScript --timeout-seconds 600 \

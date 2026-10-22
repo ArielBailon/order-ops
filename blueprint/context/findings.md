@@ -42,22 +42,22 @@
 **Suggested fix:** Add `rm -f /tmp/restore.sql.gz` before the `curl` line. Nothing is lost.
 **Resolution:**
 
-### F-17 [P3] open - deploy.sh is copied to a predictable /tmp path and executed
+### F-17 [P3] fixed - deploy.sh is copied to a predictable /tmp path and executed
 
 **File:** .github/workflows/deploy.yml:82
 **Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
 **Why it matters:** The SSM command does `cp deploy/deploy.sh /tmp/orderops-deploy.sh` and then `bash /tmp/orderops-deploy.sh`. `/tmp` is world-writable and the name is fixed. A local user who pre-creates that file with a permissive mode (or swaps it between the `cp` and the `bash`) gets code run as `ec2-user`, which is in the `docker` group and so effectively root. It needs a foothold on the host first (today only `ec2-user` and `ssm-user` exist), so the exposure is modest.
 **Suggested fix:** Copy to a private temp file instead: `f=$(mktemp) && cp deploy/deploy.sh "$f" && ... bash "$f"; rm -f "$f"`. Nothing is lost.
-**Resolution:**
+**Resolution:** deploy.yml and the docs rollback snippet now copy deploy.sh to a mktemp file (mode 600 confirmed on Linux), run it and remove it, returning the script exit code; verified by simulating the exact command string. Live behavior is proven only by the next deploy.
 
 
-### F-18 [P3] open - The ECR login token stays on disk after every deploy
+### F-18 [P3] fixed - The ECR login token stays on disk after every deploy
 
 **File:** deploy/deploy.sh:54
 **Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
 **Why it matters:** `docker login` stores the ECR token unencrypted in `/home/ec2-user/.docker/config.json` (the host printed the warning during the first deploy). The token is a 12-hour pull-only credential for the four `orderops/*` repositories, readable by `ec2-user`, so the impact is small, but it is a credential left at rest that the deploy does not need after the pull.
 **Suggested fix:** Run `docker logout "${account}.dkr.ecr.${region}.amazonaws.com"` after the pull (or set a temporary `DOCKER_CONFIG` directory for the script and remove it on exit). Nothing is lost: each deploy logs in again.
-**Resolution:**
+**Resolution:** deploy.sh now runs docker logout through an EXIT trap right after the ECR login; the stubbed harness shows exactly one logout on success, failed pull, rollback and --no-rollback, and none for a rejected SHA. Exit codes unchanged.
 
 
 ### F-19 [P3] unverified - Production deploy approval can be a self-approval; no branch ruleset confirmed

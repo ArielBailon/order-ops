@@ -480,9 +480,9 @@ To roll back by hand, or to redeploy a known-good commit, in an SSM session as `
 
 ```bash
 cd ~/order-ops && git fetch origin
-cp deploy/deploy.sh /tmp/orderops-deploy.sh   # git checkout rewrites deploy/ under a running script
 git checkout --detach <40-char-sha>
-APP_DIR=$PWD bash /tmp/orderops-deploy.sh <40-char-sha> --no-rollback
+f=$(mktemp) && cp deploy/deploy.sh "$f"   # a private copy: the script's own checkout rewrites deploy/
+APP_DIR=$PWD bash "$f" <40-char-sha> --no-rollback; rm -f "$f"
 ```
 
 The image tags must still exist in ECR (the lifecycle keeps the last 10). A rollback does **not**

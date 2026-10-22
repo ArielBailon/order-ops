@@ -51,8 +51,11 @@ git checkout --quiet --detach "$sha"
 
 account="$(aws sts get-caller-identity --query Account --output text --region "$region")"
 registry="${account}.dkr.ecr.${region}.amazonaws.com/orderops"
+registry_host="${account}.dkr.ecr.${region}.amazonaws.com"
 aws ecr get-login-password --region "$region" \
-  | docker login --username AWS --password-stdin "${account}.dkr.ecr.${region}.amazonaws.com" >/dev/null
+  | docker login --username AWS --password-stdin "$registry_host" >/dev/null
+# The login leaves a 12-hour pull token in ~/.docker/config.json; remove it however the script ends.
+trap 'docker logout "$registry_host" >/dev/null 2>&1 || true' EXIT
 
 # Pull with the new tag in the environment only: .env.production is untouched if this fails.
 REGISTRY="$registry" TAG="$sha" "${compose[@]}" pull orderops-agent orders-service customers-service migrate
