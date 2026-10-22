@@ -7,7 +7,7 @@ import { FaqService } from '../faq/faq.service.js';
 import { REFUND_REPLIES } from '../agent/refund-route.js';
 import { CHEAP_MODEL, STRONG_MODEL } from '../models/models.module.js';
 import { CHECKPOINTER } from '../memory/checkpointer.js';
-import { TraceCollector } from '../trace/trace-recorder.js';
+import { summarize, TraceCollector } from '../trace/trace-recorder.js';
 import {
   TRACE_STORE,
   type TraceRecord,
@@ -125,7 +125,10 @@ export class ChatService {
     );
   }
 
-  /** Answers one message; always ends with exactly one `final` or `error` event. */
+  /**
+   * Answers one message: exactly one `final` or `error` event, then a `trace` event while
+   * the client is still reading.
+   */
   async *reply(
     { message, token, customerId, threadId }: ChatTurn,
     signal: AbortSignal,
@@ -137,6 +140,13 @@ export class ChatService {
     };
     const collector = new TraceCollector();
     const startedAt = Date.now();
+    // Built once, so the `trace` event and the stored row carry the same id and totals.
+    let record: TraceRecord | undefined;
+    const finish = () =>
+      (record ??= collector.toRecord(
+        { customerId, threadId, startedAt },
+        signal.aborted,
+      ));
     try {
       const stream = await this.graph.stream(
         { message, messages: [new HumanMessage(message)] },
@@ -155,6 +165,8 @@ export class ChatService {
         collector.note(out);
         yield out;
       }
+      const trace = traceEvent(finish());
+      if (trace) yield trace;
     } catch (error) {
       const code = error instanceof ChatAgentError ? error.code : 'agent_error';
       this.logger.warn(`chat failed (${code}): ${(error as Error).name}`);
@@ -164,12 +176,12 @@ export class ChatService {
       };
       collector.note(out);
       yield out;
+      const trace = traceEvent(finish());
+      if (trace) yield trace;
     } finally {
       // Not awaited: a slow database must not hold the SSE stream open after `final`.
       // Tracked so a shutdown can wait for it before the database is disconnected.
-      const write = this.recordTrace(
-        collector.toRecord({ customerId, threadId, startedAt }, signal.aborted),
-      );
+      const write = this.recordTrace(finish());
       this.pendingTraces.add(write);
       void write.finally(() => this.pendingTraces.delete(write));
     }
@@ -188,4 +200,13 @@ export class ChatService {
       this.logger.warn(`trace write failed: ${(error as Error).name}`);
     }
   }
+}
+
+/** The closing `trace` event, or null for an aborted request (nobody is reading it). */
+function traceEvent(record: TraceRecord): ChatEvent | null {
+  if (record.status === 'aborted') return null;
+  return {
+    type: 'trace',
+    data: summarize({ ...record, status: record.status }),
+  };
 }

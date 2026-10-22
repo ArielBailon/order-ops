@@ -44,10 +44,7 @@ export type FinalReply = FinalAnswer & {
 
 export type ToolName = 'list_orders' | 'get_order';
 
-export type ChatErrorCode =
-  | 'agent_error'
-  | 'invalid_output'
-  | 'shutting_down';
+export type ChatErrorCode = 'agent_error' | 'invalid_output' | 'shutting_down';
 
 /** Sent once, right before `final`, when a new refund request waits for an operator. */
 export interface ApprovalRequired {
@@ -68,10 +65,38 @@ export type AgentEvent =
   | { type: 'final'; data: FinalReply }
   | { type: 'error'; data: { code: ChatErrorCode; message: string } };
 
-/** SSE events streamed by POST /chat. `approval_required` precedes `final` when a refund waits for an operator. */
+/**
+ * Closes every reply that is still being read: metadata about the request, never message
+ * text. `id` is the stored `ChatTrace` id. `costUsd` sums the priced calls (six decimals),
+ * null when no call had a price; `unpriced` counts the calls left out.
+ */
+export interface TraceSummary {
+  id: string;
+  route: ChatRoute | null;
+  tools: string[];
+  /** Provider of the last completed model call, null when none completed. */
+  provider: string | null;
+  failovers: number;
+  tokens: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
+  costUsd: string | null;
+  unpriced: number;
+  latencyMs: number;
+  status: 'ok' | 'error';
+}
+
+/**
+ * SSE events streamed by POST /chat. `approval_required` precedes `final` when a refund
+ * waits for an operator; `trace` follows `final` or `error`.
+ */
 export type ChatEvent =
   | Exclude<AgentEvent, { type: 'final' }>
-  | { type: 'final'; data: FinalReply & { threadId: string } };
+  | { type: 'final'; data: FinalReply & { threadId: string } }
+  | { type: 'trace'; data: TraceSummary };
 
 export const CHAT_ERROR_MESSAGES: Record<ChatErrorCode, string> = {
   agent_error: 'The assistant could not answer right now. Please try again.',

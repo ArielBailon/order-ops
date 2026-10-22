@@ -121,6 +121,17 @@ describe('gateway chat (e2e)', () => {
         };
       });
 
+  /** The `trace` event that closes every reply: metadata with the stored trace id. */
+  const traceEvent = (status: 'ok' | 'error', route: string | null) => ({
+    type: 'trace',
+    data: expect.objectContaining({
+      id: expect.stringMatching(UUID),
+      status,
+      route,
+      failovers: 0,
+    }),
+  });
+
   it('POST /chat returns 401 without a token', async () => {
     await request(app.getHttpServer())
       .post('/chat')
@@ -192,7 +203,13 @@ describe('gateway chat (e2e)', () => {
           threadId: expect.stringMatching(UUID),
         },
       },
+      traceEvent('ok', 'order'),
     ]);
+    // The trace event carries metadata only, never the question or the answer.
+    const trace = JSON.stringify(parseEvents(res.text).at(-1));
+    expect(trace).not.toContain('kettle');
+    expect(trace).not.toContain('ord_1001?');
+    expect(parseEvents(res.text).at(-1)?.data.tools).toEqual(['get_order']);
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe('http://127.0.0.1:3001/orders/ord_1001');
     expect(init.headers).toEqual({ authorization: `Bearer ${token}` });
@@ -223,6 +240,7 @@ describe('gateway chat (e2e)', () => {
           threadId: expect.stringMatching(UUID),
         },
       },
+      traceEvent('ok', 'faq'),
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -237,7 +255,8 @@ describe('gateway chat (e2e)', () => {
       .expect(200);
 
     const events = parseEvents(res.text);
-    expect(events).toHaveLength(1);
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual(traceEvent('ok', 'out_of_scope'));
     expect(events[0]).toMatchObject({
       type: 'final',
       data: { orderIds: [], route: 'out_of_scope' },
@@ -253,7 +272,9 @@ describe('gateway chat (e2e)', () => {
         .set('Authorization', `Bearer ${bearer}`)
         .send({ message, threadId })
         .expect(200);
-      return parseEvents(res.text).at(-1)!.data as { threadId: string };
+      return parseEvents(res.text).find((e) => e.type === 'final')!.data as {
+        threadId: string;
+      };
     };
     const answer = () => [
       new AIMessageChunk({ content: 'Your kettle has shipped.' }),
@@ -321,7 +342,12 @@ describe('gateway chat (e2e)', () => {
 
       const events = await requestRefund();
 
-      expect(events.map((e) => e.type)).toEqual(['approval_required', 'final']);
+      expect(events.map((e) => e.type)).toEqual([
+        'approval_required',
+        'final',
+        'trace',
+      ]);
+      expect(events[2]).toEqual(traceEvent('ok', 'refund'));
       expect(events[0].data).toEqual({
         refundId: 'ref_e2e',
         orderId: 'ord_1001',
@@ -379,6 +405,7 @@ describe('gateway chat (e2e)', () => {
             'The assistant could not answer right now. Please try again.',
         },
       },
+      traceEvent('error', null),
     ]);
   });
 });

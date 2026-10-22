@@ -153,6 +153,7 @@ describe('ChatService', () => {
       traces,
     );
 
+  let traceEvents: Extract<ChatEvent, { type: 'trace' }>[] = [];
   const run = async (
     model: FakeChatModel,
     message = 'where is my order?',
@@ -171,7 +172,9 @@ describe('ChatService', () => {
       },
       requestSignal,
     ))
-      events.push(event);
+      // The closing `trace` event is checked in the traces tests; the others assert the rest.
+      if (event.type === 'trace') traceEvents.push(event);
+      else events.push(event);
     return events;
   };
 
@@ -182,6 +185,7 @@ describe('ChatService', () => {
       .map((m) => m.content);
 
   beforeEach(() => {
+    traceEvents = [];
     saver = new MemorySaver();
     memory.get.mockReset().mockResolvedValue([]);
     memory.add.mockReset().mockResolvedValue(undefined);
@@ -1187,7 +1191,13 @@ describe('ChatService', () => {
           finish = resolve;
         }),
       );
-      await run(new FakeChatModel([]), 'where is my order?', signal, {}, service);
+      await run(
+        new FakeChatModel([]),
+        'where is my order?',
+        signal,
+        {},
+        service,
+      );
 
       let flushed = false;
       const flush = service.flushTraces().then(() => {
@@ -1199,6 +1209,90 @@ describe('ChatService', () => {
       finish();
       await flush;
       expect(flushed).toBe(true);
+    });
+
+    const rawEvents = async (
+      model: FakeChatModel,
+      message: string,
+      sig = signal,
+    ) => {
+      const out: ChatEvent[] = [];
+      for await (const event of makeService(model).reply(
+        { message, token: 'tok', customerId: CUSTOMER, threadId: THREAD },
+        sig,
+      ))
+        out.push(event);
+      return out;
+    };
+
+    it('closes a successful reply with a trace event that matches the stored row', async () => {
+      const model = new FakeChatModel([
+        [toolCall('get_order', { orderId: 'ord_1001' })],
+        [text('Your kettle shipped.')],
+      ]);
+      model.usage = USAGE;
+
+      const events = await rawEvents(model, 'my secret question');
+
+      expect(events.slice(-2).map((e) => e.type)).toEqual(['final', 'trace']);
+      const trace = events.at(-1) as Extract<ChatEvent, { type: 'trace' }>;
+      const row = recorded();
+      const total = (key: 'inputTokens' | 'outputTokens' | 'cacheReadTokens') =>
+        row.calls.reduce((sum, call) => sum + call[key], 0);
+      expect(trace.data).toMatchObject({
+        id: row.id,
+        route: 'order',
+        tools: ['get_order'],
+        provider: row.calls.at(-1)?.provider,
+        failovers: 0,
+        latencyMs: row.latencyMs,
+        status: 'ok',
+        tokens: {
+          input: total('inputTokens'),
+          output: total('outputTokens'),
+          cacheRead: total('cacheReadTokens'),
+          cacheWrite: 0,
+        },
+      });
+      expect(row.failovers).toBe(0);
+      expect(trace.data.costUsd).toMatch(/^\d+\.\d{6}$/);
+      expect(JSON.stringify(trace)).not.toContain('secret');
+      expect(JSON.stringify(trace)).not.toContain('kettle');
+    });
+
+    it('follows an error with a trace event for the same stored row', async () => {
+      const events = await rawEvents(
+        new FakeChatModel([], [], [new Error('router down')]),
+        'hi',
+      );
+
+      expect(events.slice(-2).map((e) => e.type)).toEqual(['error', 'trace']);
+      expect(events.at(-1)?.data).toMatchObject({
+        id: recorded().id,
+        route: null,
+        status: 'error',
+      });
+    });
+
+    it('sends no trace event for an aborted request but still records it', async () => {
+      const abort = new AbortController();
+      abort.abort();
+
+      const events = await rawEvents(
+        new FakeChatModel([[text('hi')]]),
+        'hi',
+        abort.signal,
+      );
+
+      expect(events.some((e) => e.type === 'trace')).toBe(false);
+      expect(recorded().status).toBe('aborted');
+    });
+
+    it('sends exactly one trace event per reply through the run helper too', async () => {
+      await run(new FakeChatModel([[text('Your kettle shipped.')]]));
+
+      expect(traceEvents).toHaveLength(1);
+      expect(traceEvents[0].data.id).toBe(recorded().id);
     });
 
     it('stores no message text', async () => {

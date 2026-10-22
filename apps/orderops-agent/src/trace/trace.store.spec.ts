@@ -14,12 +14,14 @@ const call = {
 };
 
 const trace: TraceRecord = {
+  id: '7f1c2a9e-3b4d-4e5f-8a6b-1c2d3e4f5a6b',
   customerId: 'cus_ana',
   threadId: 'thread-1',
   route: 'order',
   tools: ['get_order'],
   status: 'ok',
   latencyMs: 1200,
+  failovers: 1,
   calls: [call, { ...call, tier: 'strong', costUsd: null }],
 };
 
@@ -37,12 +39,14 @@ describe('PrismaTraceStore', () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith({
       data: {
+        id: '7f1c2a9e-3b4d-4e5f-8a6b-1c2d3e4f5a6b',
         customerId: 'cus_ana',
         threadId: 'thread-1',
         route: 'order',
         tools: ['get_order'],
         status: 'ok',
         latencyMs: 1200,
+        failovers: 1,
         calls: { create: trace.calls },
       },
     });
@@ -55,6 +59,8 @@ describe('PrismaTraceStore', () => {
     expect(Object.keys(data).sort()).toEqual([
       'calls',
       'customerId',
+      'failovers',
+      'id',
       'latencyMs',
       'route',
       'status',

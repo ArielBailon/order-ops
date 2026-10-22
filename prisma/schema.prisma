@@ -107,6 +107,8 @@ model ChatTrace {
   tools      String[]
   status     TraceStatus
   latencyMs  Int
+  /// Model calls that failed and were answered by a different provider instead.
+  failovers  Int         @default(0)
   createdAt  DateTime    @default(now())
   calls      LlmCall[]
 

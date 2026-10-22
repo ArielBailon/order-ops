@@ -1,8 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import type { Serialized } from '@langchain/core/load/serializable';
 import type { BaseMessage } from '@langchain/core/messages';
 import type { ChatGeneration, LLMResult } from '@langchain/core/outputs';
-import type { ChatEvent } from '../chat/chat.schemas.js';
+import type {
+  ChatEvent,
+  ChatRoute,
+  TraceSummary,
+} from '../chat/chat.schemas.js';
 import { costUsd, usageOf } from '../models/pricing.js';
 import { MODEL_IDS, type Provider, type Tier } from '../models/providers.js';
 import type { LlmCallRecord, TraceRecord, TraceStatus } from './trace.store.js';
@@ -31,9 +36,14 @@ export class TraceCollector extends BaseCallbackHandler {
   // Handlers are synchronous and cheap; running them inline keeps tests deterministic.
   awaitHandlers = true;
 
+  /** Generated before the request runs so the stored row and the `trace` event share it. */
+  readonly id = randomUUID();
   readonly calls: LlmCallRecord[] = [];
   private readonly tools: string[] = [];
-  private route: string | null = null;
+  private failovers = 0;
+  /** Provider of the last call that failed, until the next call completes. */
+  private failedProvider: string | null = null;
+  private route: ChatRoute | null = null;
   private sawError = false;
   private readonly started = new Map<
     string,
@@ -75,8 +85,17 @@ export class TraceCollector extends BaseCallbackHandler {
       (message as { usage_metadata?: Parameters<typeof usageOf>[0] })
         ?.usage_metadata,
     );
+    const described = describeModel(modelId, start?.provider);
+    // A failed call answered by another provider is a failover; a retry on the same one is not.
+    if (
+      this.failedProvider !== null &&
+      described.provider !== 'unknown' &&
+      described.provider !== this.failedProvider
+    )
+      this.failovers++;
+    this.failedProvider = null;
     this.calls.push({
-      ...describeModel(modelId, start?.provider),
+      ...described,
       model: modelId,
       ...usage,
       latencyMs: start ? Math.max(0, this.now() - start.at) : 0,
@@ -85,7 +104,11 @@ export class TraceCollector extends BaseCallbackHandler {
   }
 
   handleLLMError(_error: unknown, runId: string): void {
+    const start = this.started.get(runId);
     this.started.delete(runId);
+    this.failedProvider = start
+      ? describeModel(start.model, start.provider).provider
+      : 'unknown';
   }
 
   /** Feeds an event the service is about to yield. */
@@ -106,13 +129,43 @@ export class TraceCollector extends BaseCallbackHandler {
         ? 'error'
         : 'ok';
     return {
+      id: this.id,
       customerId: ctx.customerId,
       threadId: ctx.threadId,
       route: this.route,
       tools: [...this.tools],
       status,
       latencyMs: Math.max(0, this.now() - ctx.startedAt),
+      failovers: this.failovers,
       calls: [...this.calls],
     };
   }
+}
+
+/** The `trace` event data for a finished request: totals of its recorded calls, no text. */
+export function summarize(
+  record: TraceRecord & { status: 'ok' | 'error' },
+): TraceSummary {
+  const sum = (pick: (call: LlmCallRecord) => number) =>
+    record.calls.reduce((total, call) => total + pick(call), 0);
+  const priced = record.calls.filter((call) => call.costUsd !== null);
+  return {
+    id: record.id,
+    route: record.route,
+    tools: record.tools,
+    provider: record.calls.at(-1)?.provider ?? null,
+    failovers: record.failovers,
+    tokens: {
+      input: sum((c) => c.inputTokens),
+      output: sum((c) => c.outputTokens),
+      cacheRead: sum((c) => c.cacheReadTokens),
+      cacheWrite: sum((c) => c.cacheWriteTokens),
+    },
+    costUsd: priced.length
+      ? priced.reduce((total, c) => total + (c.costUsd ?? 0), 0).toFixed(6)
+      : null,
+    unpriced: record.calls.length - priced.length,
+    latencyMs: record.latencyMs,
+    status: record.status,
+  };
 }

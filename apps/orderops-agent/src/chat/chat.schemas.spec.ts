@@ -59,4 +59,24 @@ describe('formatSseEvent', () => {
       formatSseEvent({ type: 'token', data: { text: 'line one\nline two' } }),
     ).toBe('event: token\ndata: {"text":"line one\\nline two"}\n\n');
   });
+
+  it('writes the trace event as one event with its summary as JSON data', () => {
+    const data = {
+      id: '7f1c2a9e-3b4d-4e5f-8a6b-1c2d3e4f5a6b',
+      route: 'order' as const,
+      tools: ['get_order'],
+      provider: 'anthropic',
+      failovers: 0,
+      tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
+      costUsd: '0.000125',
+      unpriced: 0,
+      latencyMs: 900,
+      status: 'ok' as const,
+    };
+
+    const out = formatSseEvent({ type: 'trace', data });
+
+    expect(out).toBe(`event: trace\ndata: ${JSON.stringify(data)}\n\n`);
+    expect(out.split('\n')).toHaveLength(4);
+  });
 });

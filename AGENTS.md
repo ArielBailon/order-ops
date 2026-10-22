@@ -328,7 +328,12 @@ until the global npm is updated.
   `GET :3001/orders`, `GET :3001/orders/:id`, `GET :3002/customers/me`
 - Chat: `POST http://localhost:3000/chat` with `{ "message", "threadId"? }` (uuid; omit to
   start a thread) streams SSE; the `final` event returns the `threadId` to send
-  next. The gateway creates its LangGraph checkpoint tables at startup in the
+  next. A `trace` event follows `final` (or `error`) on every reply still being read:
+  `{ id, route, tools, provider, failovers, tokens: { input, output, cacheRead, cacheWrite },
+  costUsd, unpriced, latencyMs, status }`, where `id` is the stored `ChatTrace` id (generated
+  by the app), `provider` is the last completed call's, `failovers` counts failed calls another
+  provider answered, and `costUsd` is a six-decimal string or null; metadata only, no message
+  text. An aborted request sends none but is still recorded. The gateway creates its LangGraph checkpoint tables at startup in the
   same database; the `UserMemory`, `RefundRequest`, `ChatTrace` and `LlmCall` tables come from
   `npx prisma migrate deploy` (`migrate dev` reports drift from library-managed
   tables such as `policy_chunks` and asks to reset the database: do not)

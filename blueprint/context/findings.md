@@ -7,16 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-06 [P3] closed - Controller `finally { done() }` and the throw path have no test
-
-**File:** apps/orderops-agent/src/chat/chat.controller.ts:60
-**Found:** 2026-10-19 by /audit independent current (scope: current; lens: tests)
-**Why it matters:** The drain depends on the controller calling `done()` on every exit, including when `chat.reply` throws. The unit specs call `done()` by hand, and no spec exercises the controller, so removing the `try/finally` would leave all tests green while shutdown silently waits the full 5 s timeout and then loses the trace race again.
-**Suggested fix:** Add a small controller or e2e test where `chat.reply` throws or the client aborts, asserting the `done` returned by `track` was invoked (or that `beforeApplicationShutdown` resolves without hitting the timeout).
-**Resolution:** Added `apps/orderops-agent/src/chat/chat.controller.spec.ts` (3 cases: normal completion writes then ends then releases; `reply` throws and `done` is still called; client close mid-stream stops writing and releases). Mutation checks: replacing the `try/finally` with a plain `done()` after the loop fails the throw case; commenting out `done()` fails all 3. No production code changed.
-**Re-review 2026-10-22:** chat.controller.ts still has the try/finally; chat.controller.spec.ts has 3 cases that assert done() on completion, on a throwing reply and on client close, and ran green (3 passed). Mutation claims were not re-run (the audit does not edit code). Closed.
-
-
 ### F-08 [P3] fixed - IMDS hop limit 2 exposes the instance role to every container while Bedrock is off
 
 **File:** docs/deploy.md:204
@@ -27,45 +17,6 @@
 **Re-review 2026-10-22:** Docs verified (launch command hop limit 1, Bedrock step raises and reverts it). Kept as fixed, not closed: the RUNNING instance still has hop limit 2, so the exposure the finding describes persists until the owner runs the modify-instance-metadata-options command with 1.
 
 
-### F-15 [P3] closed - Restore failure note assumes the chain only stops at the restore line
-
-**File:** docs/deploy.md:404
-**Found:** 2026-10-20 by /audit independent current (scope: current; lens: quality)
-**Why it matters:** The note says that if the chain stops "after the drop" the database is empty and to rerun only the restore line, never `up -d`. That is wrong for two other stops. (1) DROP fails (for example a prepared transaction or replication slot blocks `WITH (FORCE)`): the apps are stopped but the live database is intact, not empty; rerunning the restore line fails "already exists" and rolls back (no data loss), and the "repeat DROP" fallback fails again for the same reason. (2) `up -d` fails after a successful restore (build or health problem): the database is fully restored, and the note's advice (rerun the restore line, then DROP/CREATE and restore again) is needless and destructive; the right action is to fix the cause and rerun `$dc up -d`. `rm /tmp/restore.sql.gz` is also skipped, leaving a full customer dump in /tmp. The dump stays in S3, so nothing is lost beyond time.
-**Suggested fix:** Replace the note with one line per stop point: stopped at `stop` or DROP (data intact, apps down: fix, rerun the block); stopped at the restore (database empty, rerun only the restore line); stopped at `up -d` (data restored, only fix and rerun `$dc up -d`, then `rm /tmp/restore.sql.gz`). Nothing is lost.
-**Resolution:** The closing note in "Restore a backup" now has one bullet per stop point (stop/DROP: data intact, rerun the block; restore: database empty, rerun only the restore line; up -d: data restored, rerun only `$dc up -d` then rm the dump). Docs only; the destructive block is unchanged (same md5).
-**Re-review 2026-10-22:** The restore section now has one bullet per stop point with the right database state and next action; the destructive block is unchanged. See F-21 for one edge the bullets do not cover. Closed.
-
-
-### F-16 [P3] closed - A stale /tmp/restore.sql.gz passes the download check after a failed download
-
-**File:** docs/deploy.md:375
-**Found:** 2026-10-20 by /audit independent current (scope: current; lens: quality)
-**Why it matters:** `curl -f -o` writes nothing on an HTTP error, so if an earlier file is still in /tmp (it is removed only after a fully successful restore), `gzip -t` passes and "download ok" prints although the new download failed; the block then restores the older file, possibly a different backup than the one just chosen. Reachable only on a retry after a failed run, hence P3.
-**Suggested fix:** Add `rm -f /tmp/restore.sql.gz` before the `curl` line. Nothing is lost.
-**Resolution:** Added `rm -f /tmp/restore.sql.gz` directly before the curl line in the download block, so a stale file cannot pass the gzip check. Docs only.
-**Re-review 2026-10-22:** rm -f /tmp/restore.sql.gz is directly before the curl in the download block; the block passes bash -n. Closed.
-
-### F-17 [P3] closed - deploy.sh is copied to a predictable /tmp path and executed
-
-**File:** .github/workflows/deploy.yml:82
-**Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
-**Why it matters:** The SSM command does `cp deploy/deploy.sh /tmp/orderops-deploy.sh` and then `bash /tmp/orderops-deploy.sh`. `/tmp` is world-writable and the name is fixed. A local user who pre-creates that file with a permissive mode (or swaps it between the `cp` and the `bash`) gets code run as `ec2-user`, which is in the `docker` group and so effectively root. It needs a foothold on the host first (today only `ec2-user` and `ssm-user` exist), so the exposure is modest.
-**Suggested fix:** Copy to a private temp file instead: `f=$(mktemp) && cp deploy/deploy.sh "$f" && ... bash "$f"; rm -f "$f"`. Nothing is lost.
-**Resolution:** deploy.yml and the docs rollback snippet now copy deploy.sh to a mktemp file (mode 600 confirmed on Linux), run it and remove it, returning the script exit code; verified by simulating the exact command string. Live behavior is proven only by the next deploy.
-**Re-review 2026-10-22:** deploy.yml builds the command with f=$(mktemp), runs the copy and removes it, keeping the exit code; no fixed /tmp/orderops-deploy path remains in docs, deploy/ or .github. Live run not observed. Closed.
-
-
-### F-18 [P3] closed - The ECR login token stays on disk after every deploy
-
-**File:** deploy/deploy.sh:54
-**Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
-**Why it matters:** `docker login` stores the ECR token unencrypted in `/home/ec2-user/.docker/config.json` (the host printed the warning during the first deploy). The token is a 12-hour pull-only credential for the four `orderops/*` repositories, readable by `ec2-user`, so the impact is small, but it is a credential left at rest that the deploy does not need after the pull.
-**Suggested fix:** Run `docker logout "${account}.dkr.ecr.${region}.amazonaws.com"` after the pull (or set a temporary `DOCKER_CONFIG` directory for the script and remove it on exit). Nothing is lost: each deploy logs in again.
-**Resolution:** deploy.sh now runs docker logout through an EXIT trap right after the ECR login; the stubbed harness shows exactly one logout on success, failed pull, rollback and --no-rollback, and none for a rejected SHA. Exit codes unchanged.
-**Re-review 2026-10-22:** deploy.sh sets the EXIT trap right after the ECR login; the stubbed harness (earlier) showed one logout per run. Residual: the token from the deploy before this fix stays in ~/.docker/config.json until the next deploy logs out; it expires in 12 hours. Closed.
-
-
 ### F-19 [P3] unverified - Production deploy approval can be a self-approval; no branch ruleset confirmed
 
 **File:** docs/deploy.md:445
@@ -73,22 +24,3 @@
 **Why it matters:** The deploy role may run any shell command as root on the instance (`ssm:SendCommand` on `AWS-RunShellScript`), so control of `deploy.yml` on `master` is control of the host and its `.env.production`. The `production` environment requires a reviewer, but the only account is the author and "Prevent self-review" is off, and the branch ruleset (runbook step C4) was optional and is not confirmed to exist. With no ruleset, a direct push to `master` can change the workflow and the author can approve it. This is acceptable for a solo demo; it matters once anyone else has write access.
 **Suggested fix:** Confirm the `master` ruleset exists (require a pull request and the `checks`, `integration`, `docker` and `deterministic` checks), and turn on "Prevent self-review" if a second reviewer is ever added. Missing validation: the repository settings were not inspected.
 **Resolution:**
-
-
-### F-20 [P3] closed - Deploy workflow actions are pinned to mutable major tags
-
-**File:** .github/workflows/deploy.yml:40
-**Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
-**Why it matters:** `actions/checkout@v4`, `aws-actions/configure-aws-credentials@v4` and `aws-actions/amazon-ecr-login@v2` can be moved to new code by their publishers. This job holds OIDC credentials that can push images and run commands on the production host, so a compromised tag would run with them. The same convention is used in `ci.yml` and `evals.yml`, which hold no credentials, so this is the one workflow where it carries weight.
-**Suggested fix:** Pin the three actions in `deploy.yml` to full commit SHAs with a version comment, and let Dependabot update them. Nothing is lost.
-**Resolution:** The three actions in deploy.yml are pinned to the commit SHAs their tags pointed to on 2026-10-22 (checkout v4 11d5960, configure-aws-credentials v4 7474bc4 via the peeled annotated tag, ecr-login v2 03f1aad), with the version in a trailing comment. ci.yml and evals.yml are unchanged. Whether GitHub accepts the pins is proven only by the next Deploy run.
-**Re-review 2026-10-22:** All three uses: lines in deploy.yml are owner/repo@<40 hex> with a version comment (YAML parses, no unpinned uses); the SHAs match the recorded git ls-remote output. Not re-verified online (the audit makes no network calls) and not yet accepted by a GitHub run. Closed.
-
-
-### F-21 [P3] invalid - Restore note says a DROP-stage stop leaves the database intact, but CREATE can fail after DROP
-
-**File:** docs/deploy.md:553
-**Found:** 2026-10-22 by /audit (scope: path; lens: quality; builder session, not an independent review)
-**Why it matters:** The first bullet says that if the chain stops at `stop` or `DROP` the live database is intact and the whole block can be rerun. The `psql` call runs `DROP DATABASE` and `CREATE DATABASE` as two separate `-c` commands. If `DROP` succeeds and `CREATE` then fails (for example the server runs out of disk), the database no longer exists, and rerunning the whole block fails at `DROP` ("does not exist") every time. Unlikely, and nothing is lost beyond time (the dump is in S3), but the note is wrong for that case. Not run: psql's exit status with a failing second `-c` was not checked.
-**Suggested fix:** Add one clause to the first bullet: if `DROP` succeeded but `CREATE` failed, the database is gone; fix the cause, run only `CREATE DATABASE orderops;` and then the restore line. Nothing is lost.
-**Resolution:** Marked invalid on the owner's explicit decision (2026-10-22) after observing psql in a throwaway postgres:16-alpine container (no network, no volumes, removed afterwards). psql with two -c arguments and no ON_ERROR_STOP runs both and exits with the status of the last. Case C: DROP succeeded and CREATE failed left the database gone and exited 1, as the finding said. But case D: rerunning the real block against the missing database made DROP error ("does not exist"), CREATE succeed and psql exit 0, so the chain continued to the restore. The finding's consequence (rerun fails at DROP every time) is wrong and the existing advice to run the whole block again works. Only the phrase "the live database is intact" is imprecise for case C; left as is by the owner's choice. No docs change.

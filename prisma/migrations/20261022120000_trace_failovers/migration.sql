@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "ChatTrace" ADD COLUMN "failovers" INTEGER NOT NULL DEFAULT 0;
