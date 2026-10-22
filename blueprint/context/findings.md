@@ -18,7 +18,7 @@
 
 ### F-08 [P3] open - IMDS hop limit 2 exposes the instance role to every container while Bedrock is off
 
-**File:** docs/deploy.md:183
+**File:** docs/deploy.md:204
 **Found:** 2026-10-20 by /audit independent current (scope: current; lens: security)
 **Why it matters:** `HttpPutResponseHopLimit=2` lets any container, including internet-facing Caddy and the LLM gateway, fetch the role credentials (SSM core, log writes, backup `PutObject`) after an SSRF or container compromise. The doc justifies it only for Bedrock, which is disabled (`AWS_REGION` empty) and unverified. IMDSv2 is still required, so the exposure is modest.
 **Suggested fix:** Keep the default hop limit of 1 now and raise it to 2 (`aws ec2 modify-instance-metadata-options`) in the "Bedrock check" step, noting the tradeoff. Nothing is lost today because Bedrock is not in use.
@@ -41,3 +41,39 @@
 **Why it matters:** `curl -f -o` writes nothing on an HTTP error, so if an earlier file is still in /tmp (it is removed only after a fully successful restore), `gzip -t` passes and "download ok" prints although the new download failed; the block then restores the older file, possibly a different backup than the one just chosen. Reachable only on a retry after a failed run, hence P3.
 **Suggested fix:** Add `rm -f /tmp/restore.sql.gz` before the `curl` line. Nothing is lost.
 **Resolution:**
+
+### F-17 [P3] open - deploy.sh is copied to a predictable /tmp path and executed
+
+**File:** .github/workflows/deploy.yml:82
+**Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
+**Why it matters:** The SSM command does `cp deploy/deploy.sh /tmp/orderops-deploy.sh` and then `bash /tmp/orderops-deploy.sh`. `/tmp` is world-writable and the name is fixed. A local user who pre-creates that file with a permissive mode (or swaps it between the `cp` and the `bash`) gets code run as `ec2-user`, which is in the `docker` group and so effectively root. It needs a foothold on the host first (today only `ec2-user` and `ssm-user` exist), so the exposure is modest.
+**Suggested fix:** Copy to a private temp file instead: `f=$(mktemp) && cp deploy/deploy.sh "$f" && ... bash "$f"; rm -f "$f"`. Nothing is lost.
+**Resolution:**
+
+
+### F-18 [P3] open - The ECR login token stays on disk after every deploy
+
+**File:** deploy/deploy.sh:54
+**Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
+**Why it matters:** `docker login` stores the ECR token unencrypted in `/home/ec2-user/.docker/config.json` (the host printed the warning during the first deploy). The token is a 12-hour pull-only credential for the four `orderops/*` repositories, readable by `ec2-user`, so the impact is small, but it is a credential left at rest that the deploy does not need after the pull.
+**Suggested fix:** Run `docker logout "${account}.dkr.ecr.${region}.amazonaws.com"` after the pull (or set a temporary `DOCKER_CONFIG` directory for the script and remove it on exit). Nothing is lost: each deploy logs in again.
+**Resolution:**
+
+
+### F-19 [P3] unverified - Production deploy approval can be a self-approval; no branch ruleset confirmed
+
+**File:** docs/deploy.md:445
+**Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
+**Why it matters:** The deploy role may run any shell command as root on the instance (`ssm:SendCommand` on `AWS-RunShellScript`), so control of `deploy.yml` on `master` is control of the host and its `.env.production`. The `production` environment requires a reviewer, but the only account is the author and "Prevent self-review" is off, and the branch ruleset (runbook step C4) was optional and is not confirmed to exist. With no ruleset, a direct push to `master` can change the workflow and the author can approve it. This is acceptable for a solo demo; it matters once anyone else has write access.
+**Suggested fix:** Confirm the `master` ruleset exists (require a pull request and the `checks`, `integration`, `docker` and `deterministic` checks), and turn on "Prevent self-review" if a second reviewer is ever added. Missing validation: the repository settings were not inspected.
+**Resolution:**
+
+
+### F-20 [P3] open - Deploy workflow actions are pinned to mutable major tags
+
+**File:** .github/workflows/deploy.yml:40
+**Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
+**Why it matters:** `actions/checkout@v4`, `aws-actions/configure-aws-credentials@v4` and `aws-actions/amazon-ecr-login@v2` can be moved to new code by their publishers. This job holds OIDC credentials that can push images and run commands on the production host, so a compromised tag would run with them. The same convention is used in `ci.yml` and `evals.yml`, which hold no credentials, so this is the one workflow where it carries weight.
+**Suggested fix:** Pin the three actions in `deploy.yml` to full commit SHAs with a version comment, and let Dependabot update them. Nothing is lost.
+**Resolution:**
+

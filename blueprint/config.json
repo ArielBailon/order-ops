@@ -19,13 +19,13 @@
   "qualityGates": {
     "regular": {
       "audit": "manual",
-      "independentReview": "when-sensitive",
+      "independentReview": "manual",
       "check": "manual",
       "tryGuide": "manual"
     },
     "continuous": {
       "audit": "manual",
-      "independentReview": "when-sensitive",
+      "independentReview": "manual",
       "check": "manual",
       "tryGuide": "manual"
     }
