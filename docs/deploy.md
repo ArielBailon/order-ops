@@ -378,7 +378,11 @@ done
 ### C2. Deploy role for GitHub (creates an IAM OIDC provider and role, free)
 
 The trust policy accepts only tokens issued to the `production` environment of
-`ArielBailon/order-ops`. The role may push to the four repositories and run a shell command on
+`ArielBailon/order-ops`. This repository's tokens carry the owner and repository IDs in the subject
+(`repo:ArielBailon@<owner id>/order-ops@<repo id>:environment:production`), so the `sub` below
+must include them. If the role is refused with "Not authorized to perform sts:AssumeRoleWithWebIdentity",
+read the real subject from CloudTrail (`aws cloudtrail lookup-events --lookup-attributes
+AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity`, field `userIdentity.userName`). The role may push to the four repositories and run a shell command on
 the one instance, nothing else.
 
 ```bash
@@ -398,7 +402,7 @@ cat > $WORK/gh-trust.json <<EOF2
  "Action":"sts:AssumeRoleWithWebIdentity",
  "Condition":{"StringEquals":{
   "token.actions.githubusercontent.com:aud":"sts.amazonaws.com",
-  "token.actions.githubusercontent.com:sub":"repo:ArielBailon/order-ops:environment:production"}}}]}
+  "token.actions.githubusercontent.com:sub":"repo:ArielBailon@37642744/order-ops@1389972252:environment:production"}}}]}
 EOF2
 
 cat > $WORK/gh-policy.json <<EOF2
