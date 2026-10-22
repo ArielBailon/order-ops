@@ -451,13 +451,17 @@ aws iam put-role-policy --role-name "$ROLE" --policy-name orderops-ecr-pull \
 The demo customers are removed after verifying (section 11). The smoke test uses one separate
 customer without orders. Type the password here; it never goes into a file or the repository.
 The job refuses a password under 16 characters, and rerunning it rotates the password (update
-the GitHub secret to match).
+the GitHub secret to match). The first time, the host still runs the code from before CD, which
+has no `smoke-user` service, so fetch this branch (or `master` once merged) and build first.
+`tools` is an image target, not a compose service: build it through `smoke-user`.
 
 ```bash
+git fetch origin && git checkout master && git pull   # or the feature branch before the merge
+dc="docker compose -f docker-compose.prod.yml -f docker-compose.aws.yml --env-file .env.production"
 read -r -p "SMOKE_EMAIL: " SMOKE_EMAIL
 read -r -s -p "SMOKE_PASSWORD: " SMOKE_PASSWORD; echo
 export SMOKE_EMAIL SMOKE_PASSWORD
-$dc run --rm smoke-user
+$dc build smoke-user && $dc run --rm smoke-user
 unset SMOKE_PASSWORD
 ```
 
