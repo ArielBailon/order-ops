@@ -397,6 +397,11 @@ Cora has no orders.
 The tests do not need the database or any API key. There is no combined
 `verify` command yet.
 
+On every pull request GitHub Actions runs these checks (`.github/workflows/ci.yml`: `checks`,
+`integration` with a pgvector Postgres and a migration drift check, and `docker`) plus the keyless
+eval gate from `evals.yml`. To block merging until they pass, require them in the repository's
+branch protection or ruleset settings on GitHub.
+
 ## Traces and cost
 
 Every chat request writes a `ChatTrace` with one `LlmCall` per model call
@@ -448,6 +453,10 @@ checks. The live job runs on manual dispatch or weekly (Mondays 06:00 UTC) with
 the repository secrets `ANTHROPIC_API_KEY` (and `OPENAI_API_KEY` for OpenAI), a
 case cap and a cost cap, and uploads the results as the `eval-results` artifact.
 It never commits; download the artifact and commit the results by hand.
+
+CD (`.github/workflows/deploy.yml`): every push to `master` builds the images, pushes them to ECR
+tagged with the commit SHA, deploys over SSM, smoke-tests production and rolls back on failure.
+It needs the AWS and GitHub setup in `docs/deploy.md` ("Continuous deployment").
 
 ## Troubleshooting
 
