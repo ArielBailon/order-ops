@@ -4,4 +4,5 @@ export * from './current-customer.decorator.js';
 export * from './jwt-auth.guard.js';
 export * from './operator.guard.js';
 export * from './password.js';
+export * from './viewer.guard.js';
 export * from './zod-validation.pipe.js';

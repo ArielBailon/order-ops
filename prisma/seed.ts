@@ -11,6 +11,7 @@ const customers = [
   { id: 'cus_ben', name: 'Ben Carter', email: 'ben@example.com', tier: 'standard', role: 'customer' },
   { id: 'cus_cora', name: 'Cora Diaz', email: 'cora@example.com', tier: 'standard', role: 'customer' },
   { id: 'op_sam', name: 'Sam Operator', email: 'operator@example.com', tier: 'standard', role: 'operator' },
+  { id: 'view_vic', name: 'Vic Viewer', email: 'viewer@example.com', tier: 'standard', role: 'viewer' },
 ] as const;
 
 const orders = [

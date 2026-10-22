@@ -26,7 +26,7 @@ export class CustomersServiceUnavailableError extends Error {
 
 const verifiedSchema = z.object({
   customerId: z.string().min(1),
-  role: z.enum(['customer', 'operator']),
+  role: z.enum(['customer', 'operator', 'viewer']),
 });
 const UPSTREAM_TIMEOUT_MS = 5000;
 

@@ -29,8 +29,11 @@ describe('JwtAuthGuard', () => {
 
   it.each([
     ['operator', 'operator'],
+    ['viewer', 'viewer'],
     ['customer', 'customer'],
     ['Operator', 'customer'],
+    ['Viewer', 'customer'],
+    ['viewer ', 'customer'],
     ['admin', 'customer'],
     [42, 'customer'],
     [null, 'customer'],

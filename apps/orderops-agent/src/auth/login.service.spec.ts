@@ -43,6 +43,12 @@ describe('LoginService', () => {
     expect(payload).toMatchObject({ sub: 'op_sam', role: 'operator' });
   });
 
+  it('puts the viewer role in the token for a viewer', async () => {
+    fetchMock.mockResolvedValue(Response.json({ customerId: 'view_vic', role: 'viewer' }));
+    const payload = await jwt.verifyAsync((await service.login(credentials)).accessToken);
+    expect(payload).toMatchObject({ sub: 'view_vic', role: 'viewer' });
+  });
+
   it('throws InvalidCredentialsError for rejected credentials', async () => {
     fetchMock.mockResolvedValue(Response.json({ message: 'Invalid credentials' }, { status: 401 }));
     await expect(service.login(credentials)).rejects.toBeInstanceOf(InvalidCredentialsError);

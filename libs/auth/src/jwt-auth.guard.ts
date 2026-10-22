@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 
-export type UserRole = 'customer' | 'operator';
+export type UserRole = 'customer' | 'operator' | 'viewer';
 
 export interface AuthenticatedCustomer {
   customerId: string;
@@ -37,8 +37,11 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
-    // Only the exact string grants operator rights; anything else is a customer.
-    const role = payload.role === 'operator' ? 'operator' : 'customer';
+    // Only the exact strings grant operator or viewer rights; anything else is a customer.
+    const role: UserRole =
+      payload.role === 'operator' || payload.role === 'viewer'
+        ? payload.role
+        : 'customer';
     request.customer = { customerId: payload.sub, role };
     return true;
   }

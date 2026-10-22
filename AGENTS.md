@@ -354,6 +354,17 @@ until the global npm is updated.
   the customer wrote again first, the same message is appended to the thread
   instead, including when the client closed the stream early; a thread paused
   on a different request is left alone)
+- Observability API (read-only; `viewer` and `operator` tokens, 403 for customers): seed viewer
+  `viewer@example.com` (same dev password, token `role: "viewer"`). `GET :3000/observability/summary?since=`
+  (default last 7 days: latency p50/p95 overall and by route, cost per conversation, per-model totals,
+  cached-token share, error and failover rates), `GET :3000/observability/traces?since=&until=&route=&status=&limit=&before=`
+  (newest first, `limit` 1-200 default 50, `before` = a trace id from `nextBefore`; 400 for bad
+  parameters or an unknown `before`), `GET :3000/observability/traces/:id` (one trace with its model
+  calls, 404 unknown; calls share one timestamp, so their order is stable but not the call order) and
+  `GET :3000/observability/evals/latest` (newest run per provider from `evals/results/*.json`,
+  summaries only, no per-case answers; the files are baked into the image, so new results need a
+  commit and a deploy). Metadata only, never message text. The report CLI and the API share
+  `apps/orderops-agent/src/trace/trace-metrics.ts`
 - Build: `npx nest build <app>` (`npm run build` builds only `orderops-agent`)
 - Production server (gateway): `npm run build && npm run start:prod`
 - Production compose (`docker-compose.prod.yml`; Caddy + gateway + two services + Postgres,

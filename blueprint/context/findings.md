@@ -24,3 +24,12 @@
 **Why it matters:** The deploy role may run any shell command as root on the instance (`ssm:SendCommand` on `AWS-RunShellScript`), so control of `deploy.yml` on `master` is control of the host and its `.env.production`. The `production` environment requires a reviewer, but the only account is the author and "Prevent self-review" is off, and the branch ruleset (runbook step C4) was optional and is not confirmed to exist. With no ruleset, a direct push to `master` can change the workflow and the author can approve it. This is acceptable for a solo demo; it matters once anyone else has write access.
 **Suggested fix:** Confirm the `master` ruleset exists (require a pull request and the `checks`, `integration`, `docker` and `deterministic` checks), and turn on "Prevent self-review" if a second reviewer is ever added. Missing validation: the repository settings were not inspected.
 **Resolution:**
+
+
+### F-22 [P2] open - Trace detail returns model calls in random order, not the call order the spec promises
+
+**File:** apps/orderops-agent/src/observability/observability.store.ts:184
+**Found:** 2026-10-22 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** The spec's contract (`current-feature.md`, Data / contracts) says `GET /observability/traces/:id` returns `calls` "in call order". `LlmCall` rows are written in one nested create (`trace.store.ts:48`), so they share `createdAt` (Postgres `now()` is the transaction start), and the tiebreak is `id asc` on a random UUID. The order is therefore stable but arbitrary: a cheap routing call can appear after the strong answer call. The code comment and the new AGENTS.md bullet admit this, but the verified spec was not changed, so the contract and the code disagree. Low impact today (metadata only), but the 11a timeline panel would consume this order.
+**Suggested fix:** Either amend the spec contract to "stable order, not call order" (matching AGENTS.md), or keep call order by adding an `index`/`seq` integer to `LlmCall` (hand-written migration) set from the array position in `trace.store.ts` and order by it. Nothing current is lost by the spec-only change.
+**Resolution:**

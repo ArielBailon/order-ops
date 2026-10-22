@@ -40,6 +40,8 @@ COPY package.json ./
 COPY --from=prod-deps /app/node_modules ./node_modules
 # The build resolves its lazy chunks relative to dist/apps/<app>, so keep that layout.
 COPY --from=build /app/dist/apps/${APP} ./dist/apps/${APP}
+# Committed eval results, served read-only by the gateway's GET /observability/evals/latest.
+COPY --from=build /app/evals/results ./evals/results
 USER node
 # `exec` replaces the shell with node so SIGTERM reaches it directly.
 CMD ["sh", "-c", "exec node dist/apps/$APP/main.js"]

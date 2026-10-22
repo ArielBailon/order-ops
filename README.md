@@ -369,6 +369,7 @@ All seeded users share the dev-only password `orderops-dev-password`.
 | `ben@example.com`      | `cus_ben`  | customer | standard |
 | `cora@example.com`     | `cus_cora` | customer | standard |
 | `operator@example.com` | `op_sam`   | operator | standard |
+| `viewer@example.com`   | `view_vic` | viewer   | standard |
 
 | Order      | Customer | Status                 | Total  |
 | ---------- | -------- | ---------------------- | ------ |
@@ -416,6 +417,11 @@ npm run report:traces -- --since 2026-10-01
 It prints request latency (p50 and p95) per route, cost per conversation,
 totals per model and the cached-token share. Costs are estimates from the price
 table in `apps/orderops-agent/src/models/pricing.ts`.
+
+The same numbers are available as JSON to a `viewer` or `operator` token (a customer
+token gets 403): `GET /observability/summary`, `GET /observability/traces` (filters and
+paging), `GET /observability/traces/:id` and `GET /observability/evals/latest`. Log in as
+`viewer@example.com` and see `AGENTS.md` for the parameters.
 
 ## Evals
 

@@ -17,6 +17,8 @@ enum CustomerTier {
 enum UserRole {
   customer
   operator
+  /// Read-only access to the observability API.
+  viewer
 }
 
 enum RefundStatus {

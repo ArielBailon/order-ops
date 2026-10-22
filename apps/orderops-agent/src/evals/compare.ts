@@ -1,8 +1,11 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { ResultFile } from './cli.js';
 import { METRIC_NAMES } from './metrics.js';
+import { latestPerProvider, readResults } from './results.js';
+
+// Kept importable from here for the CLI scripts and specs.
+export { latestPerProvider, readResults };
 
 const RESULTS_DIR = fileURLToPath(
   new URL('../../../../evals/results', import.meta.url),
@@ -20,19 +23,6 @@ const median = (values: number[]) => {
   const mid = sorted.length >> 1;
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
-
-/** The newest run of each provider, in provider-name order. */
-export function latestPerProvider(results: ResultFile[]): ResultFile[] {
-  const latest = new Map<string, ResultFile>();
-  for (const result of results) {
-    const current = latest.get(result.provider);
-    if (!current || result.runAt > current.runAt)
-      latest.set(result.provider, result);
-  }
-  return [...latest.values()].sort((a, b) =>
-    a.provider.localeCompare(b.provider),
-  );
-}
 
 /** Markdown table comparing the latest run of each provider. */
 export function buildComparison(results: ResultFile[]): string {
@@ -91,22 +81,6 @@ export function buildComparison(results: ResultFile[]): string {
       '> **Not comparable on answer quality:** the runs used different judges or rubric versions, or not all were judged.',
     );
   return `${lines.join('\n')}\n`;
-}
-
-export async function readResults(dir: string): Promise<ResultFile[]> {
-  let names: string[];
-  try {
-    names = (await readdir(dir)).filter((name) => name.endsWith('.json'));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
-  return Promise.all(
-    names.map(
-      async (name) =>
-        JSON.parse(await readFile(join(dir, name), 'utf8')) as ResultFile,
-    ),
-  );
 }
 
 /** Prints the table; writes `evals/COMPARISON.md` only when there are results. */
