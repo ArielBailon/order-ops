@@ -157,8 +157,8 @@ services:
     profiles: [jobs]
     environment:
       <<: *db-env
-      SMOKE_EMAIL: ${SMOKE_EMAIL:?set SMOKE_EMAIL}
-      SMOKE_PASSWORD: ${SMOKE_PASSWORD:?set SMOKE_PASSWORD}
+      SMOKE_EMAIL: ${SMOKE_EMAIL:-}
+      SMOKE_PASSWORD: ${SMOKE_PASSWORD:-}
     command: ["npx", "tsx", "prisma/smoke-user.ts"]
 
 volumes:
