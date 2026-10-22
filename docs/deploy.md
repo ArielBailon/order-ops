@@ -201,7 +201,7 @@ AMI=$(aws ssm get-parameter --region "$REGION" \
 INSTANCE=$(aws ec2 run-instances --region "$REGION" \
   --image-id "$AMI" --instance-type "$TYPE" \
   --iam-instance-profile Name="$ROLE" --security-group-ids "$SG" \
-  --metadata-options HttpTokens=required,HttpEndpoint=enabled,HttpPutResponseHopLimit=2 \
+  --metadata-options HttpTokens=required,HttpEndpoint=enabled,HttpPutResponseHopLimit=1 \
   --block-device-mappings 'DeviceName=/dev/xvda,Ebs={VolumeSize=30,VolumeType=gp3,Encrypted=true}' \
   --user-data file://deploy/bootstrap.sh \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=orderops-prod}]' \
@@ -211,9 +211,12 @@ aws ec2 wait instance-status-ok --instance-ids "$INSTANCE" --region "$REGION"
 aws ec2 associate-address --instance-id "$INSTANCE" --allocation-id "$ALLOC" --region "$REGION"
 ```
 
-Notes: there is no key pair (access is Session Manager). IMDSv2 is required. The hop limit of 2
-lets the gateway container reach the instance role through the Docker bridge; with 1 its
-Bedrock client could not get credentials. `deploy/bootstrap.sh` runs as user data (root, once)
+Notes: there is no key pair (access is Session Manager). IMDSv2 is required. The metadata hop
+limit is 1, so only the host (Docker's `awslogs` driver, `deploy/deploy.sh`, the backup timer)
+can read the instance role's credentials; a container cannot, which limits what an SSRF or a
+compromised container can reach. The gateway's Bedrock client runs in a container and needs a
+hop limit of 2, which the "Bedrock check" step turns on once Bedrock is in use.
+`deploy/bootstrap.sh` runs as user data (root, once)
 and installs Docker, git and a checksum-verified Compose plugin and adds the swap file. Allow a
 couple of minutes after the status check, then confirm the instance is online in SSM:
 
@@ -576,8 +579,22 @@ aws s3 ls "s3://$BUCKET/orderops/" --region "$REGION" | tail -n 3
 
 ## Bedrock check (after AWS restores Bedrock access)
 
-On the instance, set `AWS_REGION=us-east-1` in `.env.production`, run `$dc up -d`, and confirm
-Bedrock answers with the instance role: in an SSM session,
+First raise the instance metadata hop limit from 1 to 2, because the gateway's Bedrock client
+runs in a container and reaches the instance role through the Docker bridge. From your machine
+(variables from step 0 or "Recover the variables"):
+
+```bash
+aws ec2 modify-instance-metadata-options --instance-id "$INSTANCE" --region "$REGION" \
+  --http-tokens required --http-put-response-hop-limit 2
+```
+
+The tradeoff: with 2, any container (including internet-facing Caddy and the gateway) can read the
+instance role's credentials (SSM core, log writes, backup `PutObject`, ECR pull) after an SSRF or a
+compromise. IMDSv2 is still required. If Bedrock is turned off again, run the same command with
+`--http-put-response-hop-limit 1`.
+
+Then, on the instance, set `AWS_REGION=us-east-1` in `.env.production`, run `$dc up -d`, and
+confirm Bedrock answers with the instance role: in an SSM session,
 `aws bedrock-runtime converse --region us-east-1 --model-id us.anthropic.claude-haiku-4-5-20251001-v1:0 --messages '[{"role":"user","content":[{"text":"ping"}]}]'`
 returns a reply without any configured key. Bedrock is only the last failover, so the app works
 without it.

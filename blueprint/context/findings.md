@@ -16,13 +16,13 @@
 **Resolution:** Added `apps/orderops-agent/src/chat/chat.controller.spec.ts` (3 cases: normal completion writes then ends then releases; `reply` throws and `done` is still called; client close mid-stream stops writing and releases). Mutation checks: replacing the `try/finally` with a plain `done()` after the loop fails the throw case; commenting out `done()` fails all 3. No production code changed.
 
 
-### F-08 [P3] open - IMDS hop limit 2 exposes the instance role to every container while Bedrock is off
+### F-08 [P3] fixed - IMDS hop limit 2 exposes the instance role to every container while Bedrock is off
 
 **File:** docs/deploy.md:204
 **Found:** 2026-10-20 by /audit independent current (scope: current; lens: security)
 **Why it matters:** `HttpPutResponseHopLimit=2` lets any container, including internet-facing Caddy and the LLM gateway, fetch the role credentials (SSM core, log writes, backup `PutObject`) after an SSRF or container compromise. The doc justifies it only for Bedrock, which is disabled (`AWS_REGION` empty) and unverified. IMDSv2 is still required, so the exposure is modest.
 **Suggested fix:** Keep the default hop limit of 1 now and raise it to 2 (`aws ec2 modify-instance-metadata-options`) in the "Bedrock check" step, noting the tradeoff. Nothing is lost today because Bedrock is not in use.
-**Resolution:**
+**Resolution:** docs/deploy.md now launches with HttpPutResponseHopLimit=1 (note rewritten) and the "Bedrock check" section raises it to 2 with `aws ec2 modify-instance-metadata-options`, names the credentials-exposure tradeoff and how to set it back to 1. Docs only: the RUNNING instance still has hop limit 2 until the owner runs that command with 1 (a separate, explicit AWS action), and the Bedrock step was not exercised because Bedrock access is suspended.
 
 
 ### F-15 [P3] fixed - Restore failure note assumes the chain only stops at the restore line
