@@ -69,11 +69,11 @@
 **Resolution:**
 
 
-### F-20 [P3] open - Deploy workflow actions are pinned to mutable major tags
+### F-20 [P3] fixed - Deploy workflow actions are pinned to mutable major tags
 
 **File:** .github/workflows/deploy.yml:40
 **Found:** 2026-10-22 by /audit (scope: path; lens: security; builder session, not an independent review)
 **Why it matters:** `actions/checkout@v4`, `aws-actions/configure-aws-credentials@v4` and `aws-actions/amazon-ecr-login@v2` can be moved to new code by their publishers. This job holds OIDC credentials that can push images and run commands on the production host, so a compromised tag would run with them. The same convention is used in `ci.yml` and `evals.yml`, which hold no credentials, so this is the one workflow where it carries weight.
 **Suggested fix:** Pin the three actions in `deploy.yml` to full commit SHAs with a version comment, and let Dependabot update them. Nothing is lost.
-**Resolution:**
+**Resolution:** The three actions in deploy.yml are pinned to the commit SHAs their tags pointed to on 2026-10-22 (checkout v4 11d5960, configure-aws-credentials v4 7474bc4 via the peeled annotated tag, ecr-login v2 03f1aad), with the version in a trailing comment. ci.yml and evals.yml are unchanged. Whether GitHub accepts the pins is proven only by the next Deploy run.
 
