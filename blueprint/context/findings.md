@@ -25,22 +25,22 @@
 **Resolution:**
 
 
-### F-15 [P3] open - Restore failure note assumes the chain only stops at the restore line
+### F-15 [P3] fixed - Restore failure note assumes the chain only stops at the restore line
 
 **File:** docs/deploy.md:404
 **Found:** 2026-10-20 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** The note says that if the chain stops "after the drop" the database is empty and to rerun only the restore line, never `up -d`. That is wrong for two other stops. (1) DROP fails (for example a prepared transaction or replication slot blocks `WITH (FORCE)`): the apps are stopped but the live database is intact, not empty; rerunning the restore line fails "already exists" and rolls back (no data loss), and the "repeat DROP" fallback fails again for the same reason. (2) `up -d` fails after a successful restore (build or health problem): the database is fully restored, and the note's advice (rerun the restore line, then DROP/CREATE and restore again) is needless and destructive; the right action is to fix the cause and rerun `$dc up -d`. `rm /tmp/restore.sql.gz` is also skipped, leaving a full customer dump in /tmp. The dump stays in S3, so nothing is lost beyond time.
 **Suggested fix:** Replace the note with one line per stop point: stopped at `stop` or DROP (data intact, apps down: fix, rerun the block); stopped at the restore (database empty, rerun only the restore line); stopped at `up -d` (data restored, only fix and rerun `$dc up -d`, then `rm /tmp/restore.sql.gz`). Nothing is lost.
-**Resolution:**
+**Resolution:** The closing note in "Restore a backup" now has one bullet per stop point (stop/DROP: data intact, rerun the block; restore: database empty, rerun only the restore line; up -d: data restored, rerun only `$dc up -d` then rm the dump). Docs only; the destructive block is unchanged (same md5).
 
 
-### F-16 [P3] open - A stale /tmp/restore.sql.gz passes the download check after a failed download
+### F-16 [P3] fixed - A stale /tmp/restore.sql.gz passes the download check after a failed download
 
 **File:** docs/deploy.md:375
 **Found:** 2026-10-20 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** `curl -f -o` writes nothing on an HTTP error, so if an earlier file is still in /tmp (it is removed only after a fully successful restore), `gzip -t` passes and "download ok" prints although the new download failed; the block then restores the older file, possibly a different backup than the one just chosen. Reachable only on a retry after a failed run, hence P3.
 **Suggested fix:** Add `rm -f /tmp/restore.sql.gz` before the `curl` line. Nothing is lost.
-**Resolution:**
+**Resolution:** Added `rm -f /tmp/restore.sql.gz` directly before the curl line in the download block, so a stale file cannot pass the gzip check. Docs only.
 
 ### F-17 [P3] fixed - deploy.sh is copied to a predictable /tmp path and executed
 

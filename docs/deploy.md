@@ -513,6 +513,7 @@ On the instance:
 cd ~/order-ops
 dc="docker compose -f docker-compose.prod.yml -f docker-compose.aws.yml --env-file .env.production"
 read -rs URL                # paste the signed link, then Enter (nothing is echoed)
+rm -f /tmp/restore.sql.gz   # a file left by an earlier run must not pass the gzip check below
 printf 'url = "%s"\n' "$URL" | curl -fsS -K - -o /tmp/restore.sql.gz; unset URL
 gzip -t /tmp/restore.sql.gz && echo "download ok"
 ```
@@ -542,10 +543,18 @@ Do not use `down -v` for a restore: it also deletes the Caddy certificate volume
 rate limits apply) and stops Postgres, which the restore needs. `ON_ERROR_STOP` and
 `--single-transaction` make a failed restore roll back, so it never leaves half the data.
 
-If the chain stops after the drop, the apps are still stopped and the database is empty. Fix the
-cause and run only the restore line again; do not run `up -d` yet, because `migrate` would create
-empty tables and a later restore would fail with "already exists". If tables already exist, repeat the
-`DROP DATABASE` and `CREATE DATABASE` line first. The dump stays in S3 either way.
+If the chain stops, what to do depends on where. The dump stays in S3 in every case.
+
+- **At `stop` or `DROP`:** the live database is intact and the apps are down (or still running).
+  Nothing was lost. Fix the cause (for example a prepared transaction or replication slot blocking
+  `DROP DATABASE ... WITH (FORCE)`) and run the whole block again.
+- **At the restore:** the failed single transaction rolled back, so the database is empty and the
+  apps are stopped. Fix the cause and run only the restore line again. Do not run `up -d` yet,
+  because `migrate` would create empty tables and a later restore would fail with "already
+  exists". If tables already exist, repeat the `DROP DATABASE` and `CREATE DATABASE` line first.
+- **At `up -d`:** the data is fully restored. Fix the cause (a build or health problem) and run
+  only `$dc up -d`, not the restore again, then `rm /tmp/restore.sql.gz` so the customer dump does
+  not stay in `/tmp`.
 
 ## Check the last backup
 
