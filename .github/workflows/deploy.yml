@@ -1,0 +1,131 @@
+name: Deploy
+
+# Every push to master builds the four images, pushes them to ECR tagged with the commit SHA,
+# deploys that SHA to the production instance over SSM, smoke-tests it from outside and rolls
+# back to the previous SHA if the deploy or the smoke test fails. AWS access is GitHub OIDC
+# only: there is no access key in the repository settings. The `production` environment (set in
+# GitHub: required reviewers, deployment branches limited to master) gates the job.
+# Setup of the role, repositories and settings: docs/deploy.md, "Continuous deployment".
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - blueprint/**
+      - docs/**
+      - '**.md'
+      - evals/results/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A second push waits for the running deploy instead of cancelling it half way.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # One job, so the `production` environment asks for one approval per release.
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      INSTANCE_ID: ${{ vars.INSTANCE_ID }}
+      SMOKE_EMAIL: ${{ vars.SMOKE_EMAIL }}
+      SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+      SMOKE_URL: https://api.arielbailon.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # The instance is x86_64 and so is this runner. A tag already in ECR (a re-run of the
+      # same commit) is skipped: tags are immutable.
+      - name: Build and push images
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}/orderops
+        run: |
+          for image in orderops-agent orders-service customers-service tools; do
+            if aws ecr describe-images --repository-name "orderops/$image" \
+                 --image-ids imageTag="$GITHUB_SHA" >/dev/null 2>&1; then
+              echo "orderops/$image:$GITHUB_SHA already in ECR, skipping"
+              continue
+            fi
+            if [ "$image" = tools ]; then
+              docker build --target tools -t "$REGISTRY/$image:$GITHUB_SHA" .
+            else
+              docker build --target runtime --build-arg APP="$image" -t "$REGISTRY/$image:$GITHUB_SHA" .
+            fi
+            docker push "$REGISTRY/$image:$GITHUB_SHA"
+          done
+
+      - name: Deploy, smoke test and roll back on failure
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/ssm-out"
+          : > "$out"
+
+          # Runs deploy.sh on the instance for one SHA and prints its output. The commit is
+          # checked out first so the compose files match the images, and the script runs from
+          # a copy because that checkout rewrites deploy/ underneath it.
+          remote_deploy() {
+            local sha="$1" flag="${2:-}" cmd id status params="$RUNNER_TEMP/ssm-params.json"
+            cmd="sudo -u ec2-user -H bash -c 'cd /home/ec2-user/order-ops && git fetch --quiet origin && git checkout --quiet --detach $sha && cp deploy/deploy.sh /tmp/orderops-deploy.sh && APP_DIR=\$PWD AWS_REGION=$AWS_REGION bash /tmp/orderops-deploy.sh $sha $flag'"
+            CMD="$cmd" node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({commands: [process.env.CMD]}))' "$params"
+            id="$(aws ssm send-command --instance-ids "$INSTANCE_ID" \
+              --document-name AWS-RunShellScript --timeout-seconds 600 \
+              --parameters "file://$params" \
+              --query Command.CommandId --output text)" || return 1
+            while :; do
+              sleep 10
+              status="$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
+                --query Status --output text 2>/dev/null || echo Pending)"
+              case "$status" in Pending|InProgress|Delayed) ;; *) break ;; esac
+            done
+            aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE_ID" \
+              --query '[StandardOutputContent,StandardErrorContent]' --output text | tee "$out" >&2
+            [ "$status" = Success ]
+          }
+
+          sha="$GITHUB_SHA"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then echo "unexpected commit sha" >&2; exit 1; fi
+
+          ok=1
+          echo "::group::Deploy $sha"
+          remote_deploy "$sha" || ok=0
+          echo "::endgroup::"
+          previous="$(sed -n 's/^PREVIOUS_TAG=//p' "$out" | head -n 1)"
+
+          if [ "$ok" -eq 1 ]; then
+            echo "::group::Smoke test"
+            bash deploy/smoke.sh "$SMOKE_URL" || ok=0
+            echo "::endgroup::"
+          fi
+
+          if [ "$ok" -eq 1 ]; then
+            echo "Deployed and verified $sha"
+            exit 0
+          fi
+
+          echo "::error::Release $sha failed"
+          # deploy.sh rolls back by itself when the stack does not come up, so after a failed
+          # deploy the previous release is normally running already. A failed smoke test of a
+          # healthy stack still needs the explicit rollback. The job ends red either way.
+          if [[ "$previous" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::group::Roll back to $previous"
+            remote_deploy "$previous" --no-rollback && bash deploy/smoke.sh "$SMOKE_URL" \
+              && echo "Rolled back to $previous"
+            echo "::endgroup::"
+          else
+            echo "No previous SHA to roll back to (previous tag: '${previous:-unset}')"
+          fi
+          exit 1

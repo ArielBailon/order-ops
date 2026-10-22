@@ -2,8 +2,8 @@
 
 This runbook puts the production compose (see "Production compose" in the README) on one EC2
 instance at `https://api.arielbailon.dev`: HTTPS from Caddy, logs in CloudWatch, a nightly
-database backup in S3, and no AWS access keys on the server. Releases are manual for now
-(`git pull` and rebuild on the instance); CI/CD is build-plan feature 9c.
+database backup in S3, and no AWS access keys on the server. Releases are automatic from
+`master` (see "Continuous deployment").
 
 Why one instance and not ECS Fargate + RDS + ALB: it is a demo, and the managed stack costs
 several times more. It remains the documented next step to scale.
@@ -14,7 +14,7 @@ several times more. It remains the documented next step to scale.
 | --- | --- | --- |
 | Region | `us-east-1` | The Bedrock model ids in `apps/orderops-agent/src/models/providers.ts` are `us.` inference profiles, and it is the cheapest region. Every command below passes `--region` explicitly, because a CLI default of another region (for example `sa-east-1`) would silently create resources elsewhere. |
 | Instance | `t3.small` (x86_64), 30 GB gp3, encrypted | 2 vCPU and 2 GB RAM run the stack; the 2 GB swap file from `deploy/bootstrap.sh` covers image builds. x86 means the instance builds the same images your machine does. `t4g.small` (ARM) is about 20% cheaper; switch by changing `ARCH` and `TYPE` in step 6 and rebuilding. |
-| Access | AWS Systems Manager Session Manager | No SSH key, no port 22. It is also what the 9c pipeline will use. |
+| Access | AWS Systems Manager Session Manager | No SSH key, no port 22. It is also what the deploy workflow uses. |
 | Credentials | Instance IAM role only | No access key exists on the host or in any container. |
 
 ## What it costs (approximate, `us-east-1`, check current pricing)
@@ -338,18 +338,151 @@ and memory through the foreign keys):
 $dc exec -T postgres psql -U orderops orderops -c 'TRUNCATE "Customer" CASCADE;'
 ```
 
-Whether and how a login exists for the 9c smoke test and for the public demo is decided in 9c
-and item 12.
+The deploy smoke test uses its own customer (section C5), which stays. How the public demo logs
+in is decided in item 12.
 
-## Updating the app (manual until 9c)
+## Continuous deployment (GitHub Actions to this instance)
 
-On the instance (in an SSM session as `ec2-user`):
+Every push to `master` runs `.github/workflows/deploy.yml`: it builds the three app images and
+the `tools` image, pushes them to ECR tagged with the full commit SHA, deploys that SHA over
+SSM with `deploy/deploy.sh`, smoke-tests `https://api.arielbailon.dev` with `deploy/smoke.sh`
+(`/health`, a login and one real chat request) and rolls back to the previous SHA if the deploy
+or the smoke test fails. The job ends red after a rollback so the failed release stays visible.
+Only one deploy runs at a time (a later push waits), and the job waits for approval in the
+protected `production` environment. Pull requests are checked by `ci.yml` (9c), not here: set
+those checks as required in the repository settings so only a green `master` deploys.
+
+Authentication is GitHub OIDC: the workflow assumes an IAM role that only the `production`
+environment of this repository can assume. No AWS access key exists in GitHub or on the host.
+Docs-only pushes (`docs/`, `blueprint/`, `*.md`, `evals/results/`) do not deploy.
+
+### C1. ECR repositories (creates four private repositories, pennies per month)
+
+Tags are immutable (a SHA is never overwritten) and a lifecycle policy keeps the last 10
+images per repository. Use the variables from step 0.
 
 ```bash
-cd ~/order-ops && git pull
-dc="docker compose -f docker-compose.prod.yml -f docker-compose.aws.yml --env-file .env.production"
-$dc up -d --build           # migrate runs first, then the apps restart
+cat > $WORK/ecr-lifecycle.json <<'EOF2'
+{"rules":[{"rulePriority":1,"description":"keep the last 10 images",
+ "selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},
+ "action":{"type":"expire"}}]}
+EOF2
+for image in orderops-agent orders-service customers-service tools; do
+  aws ecr create-repository --repository-name "orderops/$image" \
+    --image-tag-mutability IMMUTABLE --region "$REGION"
+  aws ecr put-lifecycle-policy --repository-name "orderops/$image" \
+    --lifecycle-policy-text file://$WORK/ecr-lifecycle.json --region "$REGION"
+done
 ```
+
+### C2. Deploy role for GitHub (creates an IAM OIDC provider and role, free)
+
+The trust policy accepts only tokens issued to the `production` environment of
+`ArielBailon/order-ops`. The role may push to the four repositories and run a shell command on
+the one instance, nothing else.
+
+```bash
+INSTANCE=$(aws ec2 describe-instances --region "$REGION" \
+  --filters Name=tag:Name,Values=orderops-prod Name=instance-state-name,Values=running \
+  --query 'Reservations[0].Instances[0].InstanceId' --output text)
+echo "$INSTANCE"     # must be a real id (i-...)
+
+aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com
+# Newer AWS CLI versions need no --thumbprint-list for this provider; if yours asks for one, stop
+# and look up GitHub's current value instead of copying one from here.
+
+cat > $WORK/gh-trust.json <<EOF2
+{"Version":"2012-10-17","Statement":[{"Effect":"Allow",
+ "Principal":{"Federated":"arn:aws:iam::$ACCOUNT:oidc-provider/token.actions.githubusercontent.com"},
+ "Action":"sts:AssumeRoleWithWebIdentity",
+ "Condition":{"StringEquals":{
+  "token.actions.githubusercontent.com:aud":"sts.amazonaws.com",
+  "token.actions.githubusercontent.com:sub":"repo:ArielBailon/order-ops:environment:production"}}}]}
+EOF2
+
+cat > $WORK/gh-policy.json <<EOF2
+{"Version":"2012-10-17","Statement":[
+ {"Sid":"EcrLogin","Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*"},
+ {"Sid":"EcrPush","Effect":"Allow",
+  "Action":["ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart",
+   "ecr:CompleteLayerUpload","ecr:PutImage","ecr:DescribeImages"],
+  "Resource":"arn:aws:ecr:$REGION:$ACCOUNT:repository/orderops/*"},
+ {"Sid":"RunOnInstance","Effect":"Allow","Action":"ssm:SendCommand",
+  "Resource":["arn:aws:ec2:$REGION:$ACCOUNT:instance/$INSTANCE",
+   "arn:aws:ssm:$REGION::document/AWS-RunShellScript"]},
+ {"Sid":"ReadResult","Effect":"Allow","Action":"ssm:GetCommandInvocation","Resource":"*"}
+]}
+EOF2
+
+aws iam create-role --role-name orderops-github-deploy \
+  --assume-role-policy-document file://$WORK/gh-trust.json
+aws iam put-role-policy --role-name orderops-github-deploy --policy-name deploy \
+  --policy-document file://$WORK/gh-policy.json
+aws iam get-role --role-name orderops-github-deploy --query Role.Arn --output text   # AWS_ROLE_ARN
+```
+
+### C3. Let the instance pull images (adds a policy to the instance role, free)
+
+```bash
+cat > $WORK/ecr-pull.json <<EOF2
+{"Version":"2012-10-17","Statement":[
+ {"Sid":"EcrLogin","Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*"},
+ {"Sid":"EcrPull","Effect":"Allow",
+  "Action":["ecr:BatchGetImage","ecr:GetDownloadUrlForLayer","ecr:BatchCheckLayerAvailability"],
+  "Resource":"arn:aws:ecr:$REGION:$ACCOUNT:repository/orderops/*"}
+]}
+EOF2
+aws iam put-role-policy --role-name "$ROLE" --policy-name orderops-ecr-pull \
+  --policy-document file://$WORK/ecr-pull.json
+```
+
+### C4. GitHub settings (you, in the repository settings)
+
+- Environment `production`: required reviewers (you), deployment branches limited to `master`.
+- Environment variables: `AWS_ROLE_ARN` (from C2), `INSTANCE_ID` (`$INSTANCE`), `AWS_REGION`
+  (`us-east-1`), `SMOKE_EMAIL` (for example `smoke@arielbailon.dev`).
+- Environment secret: `SMOKE_PASSWORD`, 16+ random characters (`openssl rand -hex 16`).
+- Branch protection or a ruleset on `master` requiring the `ci.yml` checks (`checks`,
+  `integration`, `docker`) and the `deterministic` eval job.
+
+### C5. Smoke login (on the instance, once)
+
+The demo customers are removed after verifying (section 11). The smoke test uses one separate
+customer without orders. Type the password here; it never goes into a file or the repository.
+The job refuses a password under 16 characters, and rerunning it rotates the password (update
+the GitHub secret to match).
+
+```bash
+read -r -p "SMOKE_EMAIL: " SMOKE_EMAIL
+read -r -s -p "SMOKE_PASSWORD: " SMOKE_PASSWORD; echo
+export SMOKE_EMAIL SMOKE_PASSWORD
+$dc run --rm smoke-user
+unset SMOKE_PASSWORD
+```
+
+### First CD deploy and rollbacks
+
+The instance currently runs images built on the host (`TAG=local`), so the first CD deploy has
+no previous release to roll back to: a failure that day leaves the stack as it is and the job
+red. From the second deploy on, `deploy.sh` brings back the previous SHA by itself when the
+stack does not become healthy, and the workflow does the same when the smoke test fails.
+
+To roll back by hand, or to redeploy a known-good commit, in an SSM session as `ec2-user`:
+
+```bash
+cd ~/order-ops && git fetch origin
+cp deploy/deploy.sh /tmp/orderops-deploy.sh   # git checkout rewrites deploy/ under a running script
+git checkout --detach <40-char-sha>
+APP_DIR=$PWD bash /tmp/orderops-deploy.sh <40-char-sha> --no-rollback
+```
+
+The image tags must still exist in ECR (the lifecycle keeps the last 10). A rollback does **not**
+undo database migrations: the previous release runs against the newer schema, so write
+migrations that stay compatible with the release before them (add columns and tables first,
+remove them in a later release). A failed pull or checkout changes no running container, but
+leaves the checkout on the new commit; check out the running SHA (`TAG` in `.env.production`)
+before running compose by hand.
 
 ## Restore a backup
 
@@ -441,7 +574,7 @@ without it.
   role must allow `logs:CreateLogStream` and `logs:PutLogEvents` on it. Check
   `aws logs describe-log-groups` and the role policy.
 - **Build is killed or very slow**: check `free -m` for the swap file; stop other work on the
-  instance or move builds to CI (9c).
+  instance (CD builds in GitHub Actions).
 - **`migrate` fails with P3005**: the database has tables but no migration history. Do not run
   the apps before `migrate`; `docker compose ... down -v` on a fresh instance and start again.
 
@@ -459,7 +592,14 @@ aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE" --role
 aws iam delete-instance-profile --instance-profile-name "$ROLE"
 aws iam detach-role-policy --role-name "$ROLE" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 aws iam delete-role-policy --role-name "$ROLE" --policy-name orderops-host
+aws iam delete-role-policy --role-name "$ROLE" --policy-name orderops-ecr-pull
 aws iam delete-role --role-name "$ROLE"
+aws iam delete-role-policy --role-name orderops-github-deploy --policy-name deploy
+aws iam delete-role --role-name orderops-github-deploy
+aws iam delete-open-id-connect-provider --open-id-connect-provider-arn "arn:aws:iam::$ACCOUNT:oidc-provider/token.actions.githubusercontent.com"
+for image in orderops-agent orders-service customers-service tools; do
+  aws ecr delete-repository --repository-name "orderops/$image" --force --region "$REGION"
+done
 aws logs delete-log-group --log-group-name "$LOG_GROUP" --region "$REGION"
 aws s3 rm "s3://$BUCKET" --recursive --region "$REGION"
 aws s3api delete-bucket --bucket "$BUCKET" --region "$REGION"

@@ -412,6 +412,13 @@ until the global npm is updated.
   `npm run test:e2e`) and `docker` (builds the three runtime images and `tools`, no push). The eval
   gate is the `deterministic` job in `evals.yml`. Requiring these checks before merge is a GitHub
   repository setting (branch protection or a ruleset), not part of the files
+- CD (`.github/workflows/deploy.yml`, push to `master` + manual dispatch; one job in the protected
+  `production` environment, GitHub OIDC to AWS, no keys): builds the three apps and `tools`, pushes
+  them to ECR tagged with the commit SHA, runs `deploy/deploy.sh <sha>` on the instance over SSM
+  (pull, migrate, `up --wait`, previous-SHA rollback), then `deploy/smoke.sh <url>` (health, login,
+  one chat; needs `SMOKE_EMAIL`/`SMOKE_PASSWORD`) and rolls back if it fails. The smoke login is
+  created once on the host with `$dc run --rm smoke-user`. Role, ECR repositories and GitHub
+  settings: `docs/deploy.md` "Continuous deployment". Rollbacks do not revert migrations
 - Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack

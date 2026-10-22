@@ -150,6 +150,17 @@ services:
     profiles: [jobs]
     command: ["npx", "prisma", "db", "seed"]
 
+  # The login deploy/smoke.sh uses (customer cus_smoke, no orders). Run by hand once, typing the
+  # password: SMOKE_EMAIL=... SMOKE_PASSWORD=... $dc run --rm smoke-user. Rerun to rotate it.
+  smoke-user:
+    <<: *tools
+    profiles: [jobs]
+    environment:
+      <<: *db-env
+      SMOKE_EMAIL: ${SMOKE_EMAIL:?set SMOKE_EMAIL}
+      SMOKE_PASSWORD: ${SMOKE_PASSWORD:?set SMOKE_PASSWORD}
+    command: ["npx", "tsx", "prisma/smoke-user.ts"]
+
 volumes:
   pgdata:
   caddy-data:

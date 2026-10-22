@@ -454,6 +454,10 @@ the repository secrets `ANTHROPIC_API_KEY` (and `OPENAI_API_KEY` for OpenAI), a
 case cap and a cost cap, and uploads the results as the `eval-results` artifact.
 It never commits; download the artifact and commit the results by hand.
 
+CD (`.github/workflows/deploy.yml`): every push to `master` builds the images, pushes them to ECR
+tagged with the commit SHA, deploys over SSM, smoke-tests production and rolls back on failure.
+It needs the AWS and GitHub setup in `docs/deploy.md` ("Continuous deployment").
+
 ## Troubleshooting
 
 - **`EADDRINUSE` on port 3000.** Another process (for example another Docker
