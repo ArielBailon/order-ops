@@ -12,6 +12,7 @@ describe('refund approvals (e2e)', () => {
   let jwt: JwtService;
   const decide = vi.fn();
   const listPending = vi.fn();
+  const findForCustomer = vi.fn();
   const resumeRefund = vi.fn();
 
   const tokenFor = (sub: string, role?: string) =>
@@ -38,7 +39,7 @@ describe('refund approvals (e2e)', () => {
       .overrideProvider(TRACE_STORE)
       .useValue({})
       .overrideProvider(REFUND_STORE)
-      .useValue({ decide, listPending })
+      .useValue({ decide, listPending, findForCustomer })
       .overrideProvider(ChatService)
       .useValue({ resumeRefund })
       .overrideProvider(USER_MEMORY)
@@ -60,6 +61,7 @@ describe('refund approvals (e2e)', () => {
   beforeEach(() => {
     decide.mockReset();
     listPending.mockReset();
+    findForCustomer.mockReset();
     resumeRefund.mockReset().mockResolvedValue(undefined);
   });
 
@@ -205,4 +207,76 @@ describe('refund approvals (e2e)', () => {
       expect(resumeRefund).not.toHaveBeenCalled();
     },
   );
+  describe('GET /refunds/mine/:id', () => {
+    const own = (status: string) => ({
+      id: 'ref_1',
+      orderId: 'ord_1',
+      amount: '89.90',
+      status,
+    });
+    const customer = (sub = 'cus_ana') => tokenFor(sub, 'customer');
+
+    it('returns a pending own request with no message', async () => {
+      findForCustomer.mockResolvedValue(own('pending_approval'));
+
+      const res = await request(app.getHttpServer())
+        .get('/refunds/mine/ref_1')
+        .set('Authorization', `Bearer ${await customer()}`)
+        .expect(200);
+
+      expect(res.body).toEqual({ ...own('pending_approval'), message: null });
+      // Ownership comes from the token, never from the request.
+      expect(findForCustomer).toHaveBeenCalledWith('ref_1', 'cus_ana');
+    });
+
+    it.each([
+      [
+        'approved',
+        'our team approved your refund of 89.90 USD for order ord_1',
+      ],
+      [
+        'rejected',
+        'our team declined your refund of 89.90 USD for order ord_1',
+      ],
+    ])('returns the fixed decision text once %s', async (status, text) => {
+      findForCustomer.mockResolvedValue(own(status));
+
+      const res = await request(app.getHttpServer())
+        .get('/refunds/mine/ref_1')
+        .set('Authorization', `Bearer ${await customer()}`)
+        .expect(200);
+
+      expect(res.body.status).toBe(status);
+      expect(res.body.message).toBe(`Update on refund request ref_1: ${text}.`);
+    });
+
+    it('answers a request of another customer exactly like an unknown id', async () => {
+      findForCustomer.mockResolvedValue(null);
+
+      const res = await request(app.getHttpServer())
+        .get('/refunds/mine/ref_1')
+        .set('Authorization', `Bearer ${await customer('cus_ben')}`)
+        .expect(404);
+
+      expect(findForCustomer).toHaveBeenCalledWith('ref_1', 'cus_ben');
+      expect(res.body).toEqual({
+        message: 'Refund request not found',
+        error: 'Not Found',
+        statusCode: 404,
+      });
+    });
+
+    it('needs a token', async () => {
+      await request(app.getHttpServer()).get('/refunds/mine/ref_1').expect(401);
+      expect(findForCustomer).not.toHaveBeenCalled();
+    });
+
+    it('rejects an id over 100 characters', async () => {
+      await request(app.getHttpServer())
+        .get(`/refunds/mine/${'x'.repeat(101)}`)
+        .set('Authorization', `Bearer ${await customer()}`)
+        .expect(400);
+      expect(findForCustomer).not.toHaveBeenCalled();
+    });
+  });
 });

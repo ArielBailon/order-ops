@@ -155,6 +155,12 @@ The browser only talks to the console's own server, which keeps the gateway toke
 cookie and forwards the chat stream. It is not deployed publicly yet (that waits for the rate
 limits and cost budget of build-plan item 12).
 
+To watch the human-in-the-loop refund flow, open the console in two tabs: in one, log in as a
+customer and ask for a refund on an order that qualifies (delivered within the last 30 days);
+in the other, open `http://localhost:3005/operator`, log in as Sam Operator and approve or
+reject the request. Within about five seconds the decision appears in the customer chat as an
+operator update.
+
 ## Try the whole system by hand
 
 The examples use `curl` in a Bash-style shell (Git Bash, WSL, macOS, Linux). They

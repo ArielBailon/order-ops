@@ -8,3 +8,9 @@ export const DEMO_CUSTOMERS = [
 export function isDemoCustomer(email: unknown): email is string {
   return DEMO_CUSTOMERS.some((customer) => customer.email === email);
 }
+
+/** The seeded operator; only the operator page logs in as this account. */
+export const DEMO_OPERATOR = {
+  name: 'Sam Operator',
+  email: 'operator@example.com',
+} as const;

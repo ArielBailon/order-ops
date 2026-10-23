@@ -1,6 +1,13 @@
 'use client';
 
-import { type FormEvent, type KeyboardEvent, useEffect, useReducer, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import {
   type AssistantMessage,
   conversationReducer,
@@ -10,8 +17,13 @@ import {
 import { readSse } from '@/lib/sse';
 import { TimelinePanel } from './timeline-panel';
 
-const EXAMPLES = ['Where is my most recent order?', 'What is your return policy?'];
+const EXAMPLES = [
+  'Where is my most recent order?',
+  'What is your return policy?',
+];
 const MAX_LENGTH = 2000;
+/** How often a refund request waiting for an operator is checked. */
+const POLL_MS = 5000;
 
 export function ChatView({
   email,
@@ -22,7 +34,10 @@ export function ChatView({
   onLoggedOut: () => void;
   onSessionExpired: () => void;
 }) {
-  const [conversation, dispatch] = useReducer(conversationReducer, emptyConversation);
+  const [conversation, dispatch] = useReducer(
+    conversationReducer,
+    emptyConversation,
+  );
   const [draft, setDraft] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState('');
@@ -33,18 +48,71 @@ export function ChatView({
     (message): message is AssistantMessage => message.role === 'assistant',
   );
   const streaming = replies.some((reply) => reply.status === 'streaming');
-  const selected = replies.find((reply) => reply.id === selectedId) ?? replies.at(-1);
+  const selected =
+    replies.find((reply) => reply.id === selectedId) ?? replies.at(-1);
 
   useEffect(() => {
     inputRef.current?.focus();
     return () => abortRef.current?.abort();
   }, []);
 
+  // Watches refund requests waiting for an operator until each is decided or gone. The
+  // effect restarts whenever the watched set changes and stops on reset, logout and unmount.
+  const watchKey = conversation.watching.join(',');
+  useEffect(() => {
+    if (!watchKey) return;
+    const ids = watchKey.split(',');
+    let stopped = false;
+    async function check(id: string) {
+      try {
+        const res = await fetch(`/api/refunds/${encodeURIComponent(id)}`, {
+          cache: 'no-store',
+        });
+        if (stopped) return;
+        if (res.status === 401) {
+          stopped = true;
+          return onSessionExpired();
+        }
+        if (res.status === 404)
+          return dispatch({ type: 'refund_unwatched', refundId: id });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          status?: string;
+          message?: string | null;
+        };
+        if (stopped || !data.message) return;
+        if (data.status === 'approved' || data.status === 'rejected') {
+          dispatch({
+            type: 'refund_decided',
+            refundId: id,
+            updateId: crypto.randomUUID(),
+            text: data.message,
+          });
+          setStatus(data.message);
+        }
+      } catch {
+        // A failed check is retried on the next tick without a visible error.
+      }
+    }
+    const timer = setInterval(() => {
+      for (const id of ids) void check(id);
+    }, POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [watchKey, onSessionExpired]);
+
   async function send(text: string) {
     const message = text.trim();
     if (!message || streaming) return;
     const assistantId = crypto.randomUUID();
-    dispatch({ type: 'send', userId: crypto.randomUUID(), assistantId, text: message });
+    dispatch({
+      type: 'send',
+      userId: crypto.randomUUID(),
+      assistantId,
+      text: message,
+    });
     setSelectedId(null);
     setDraft('');
     setStatus('The agent is replying…');
@@ -65,7 +133,9 @@ export function ChatView({
         return onSessionExpired();
       }
       if (!res.ok || !res.body) {
-        const data = (await res.json().catch(() => null)) as { message?: string } | null;
+        const data = (await res.json().catch(() => null)) as {
+          message?: string;
+        } | null;
         const error = data?.message ?? 'The agent could not answer right now.';
         dispatch({ type: 'fail', assistantId, message: error });
         setStatus(error);
@@ -135,7 +205,10 @@ export function ChatView({
       <main className="chat">
         {conversation.messages.length === 0 ? (
           <div className="empty">
-            <p>Ask about your orders, a refund, or the store policies. For example:</p>
+            <p>
+              Ask about your orders, a refund, or the store policies. For
+              example:
+            </p>
             <ul>
               {EXAMPLES.map((example) => (
                 <li key={example}>
@@ -153,6 +226,11 @@ export function ChatView({
                 <li key={message.id} className="message user">
                   <p>{message.text}</p>
                 </li>
+              ) : message.role === 'operator' ? (
+                <li key={message.id} className="message operator">
+                  <p className="message-label">Operator update</p>
+                  <p>{message.text}</p>
+                </li>
               ) : (
                 <li
                   key={message.id}
@@ -168,7 +246,9 @@ export function ChatView({
                       {message.approval.amount}) waits for operator approval.
                     </p>
                   )}
-                  {message.status === 'failed' && <p className="error">{message.error}</p>}
+                  {message.status === 'failed' && (
+                    <p className="error">{message.error}</p>
+                  )}
                   {message.status === 'interrupted' && (
                     <p className="muted">The reply was cut off.</p>
                   )}

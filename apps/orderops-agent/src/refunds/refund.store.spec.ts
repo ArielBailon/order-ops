@@ -125,6 +125,28 @@ describe('PrismaRefundStore', () => {
     });
   });
 
+  it('finds a request only together with the id of its owner', async () => {
+    refundRequest.findFirst.mockResolvedValueOnce({
+      id: 'ref_1',
+      orderId: 'ord_1',
+      amount: { toFixed: () => '89.90' },
+      status: 'approved',
+    });
+
+    expect(await store.findForCustomer('ref_1', 'cus_ana')).toEqual({
+      id: 'ref_1',
+      orderId: 'ord_1',
+      amount: '89.90',
+      status: 'approved',
+    });
+    expect(refundRequest.findFirst.mock.calls[0][0].where).toEqual({
+      id: 'ref_1',
+      customerId: 'cus_ana',
+    });
+    // Another customer's id matches no row.
+    expect(await store.findForCustomer('ref_1', 'cus_ben')).toBeNull();
+  });
+
   it('reports whether an order has an approved refund', async () => {
     refundRequest.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
 
@@ -201,14 +223,21 @@ describe('PrismaRefundStore', () => {
         status: 'rejected',
         decidedBy: 'op_sam',
       });
-      expect(result).toMatchObject({ ok: true, refund: { status: 'rejected' } });
+      expect(result).toMatchObject({
+        ok: true,
+        refund: { status: 'rejected' },
+      });
     });
 
     it('reports an unknown id as not_found', async () => {
       refundRequest.updateMany.mockResolvedValue({ count: 0 });
       refundRequest.findUnique.mockResolvedValue(null);
       await expect(
-        store.decide({ id: 'nope', decision: 'approved', operatorId: 'op_sam' }),
+        store.decide({
+          id: 'nope',
+          decision: 'approved',
+          operatorId: 'op_sam',
+        }),
       ).resolves.toEqual({ ok: false, code: 'not_found' });
     });
 
@@ -229,11 +258,13 @@ describe('PrismaRefundStore', () => {
 
     it('reports a still pending request that was not updated as own_request', async () => {
       refundRequest.updateMany.mockResolvedValue({ count: 0 });
-      refundRequest.findUnique.mockResolvedValue(
-        row({ customerId: 'op_sam' }),
-      );
+      refundRequest.findUnique.mockResolvedValue(row({ customerId: 'op_sam' }));
       await expect(
-        store.decide({ id: 'ref_1', decision: 'approved', operatorId: 'op_sam' }),
+        store.decide({
+          id: 'ref_1',
+          decision: 'approved',
+          operatorId: 'op_sam',
+        }),
       ).resolves.toEqual({ ok: false, code: 'own_request' });
     });
   });

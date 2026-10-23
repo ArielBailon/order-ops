@@ -160,6 +160,16 @@ button:disabled {
   margin-left: auto;
 }
 
+.message.operator {
+  border-color: var(--notice);
+}
+
+.message-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--notice);
+}
+
 .message.selected {
   border-color: var(--accent);
 }
@@ -243,4 +253,77 @@ button:disabled {
     border-left: 0;
     border-top: 1px solid var(--border);
   }
+}
+
+.operator-layout {
+  min-height: 100vh;
+}
+
+.operator {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.operator-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.operator-toolbar h2 {
+  font-size: 1.1rem;
+}
+
+.refunds {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.refund {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+}
+
+.refund dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.refund dt {
+  font-weight: 600;
+}
+
+.refund dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.refund figure {
+  margin: 0 0 0.75rem;
+}
+
+.refund figcaption {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.refund blockquote {
+  margin: 0.25rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.refund-actions {
+  display: flex;
+  gap: 0.5rem;
 }

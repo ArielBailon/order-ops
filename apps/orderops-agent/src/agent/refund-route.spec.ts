@@ -50,6 +50,7 @@ describe('runRefundRoute', () => {
   const orders = { getOrder, listOrders: vi.fn() } as unknown as OrdersClient;
   const refunds = {
     findOpenForOrder: vi.fn(),
+    findForCustomer: vi.fn(),
     hasApprovedForOrder: vi.fn(),
     create: vi.fn(),
     decide: vi.fn(),

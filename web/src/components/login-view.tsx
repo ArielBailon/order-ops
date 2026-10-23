@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { DEMO_CUSTOMERS } from '@/lib/demo-customers';
 
@@ -23,7 +24,9 @@ export function LoginView({
         body: JSON.stringify({ email }),
       });
       if (res.ok) return onLoggedIn(email);
-      const data = (await res.json().catch(() => null)) as { message?: string } | null;
+      const data = (await res.json().catch(() => null)) as {
+        message?: string;
+      } | null;
       setError(data?.message ?? 'The login failed. Please try again.');
     } catch {
       setError('The console is not reachable right now.');
@@ -35,7 +38,10 @@ export function LoginView({
   return (
     <main className="login">
       <h1>OrderOps demo console</h1>
-      <p>Log in as a demo customer to chat with the support agent and watch what it does.</p>
+      <p>
+        Log in as a demo customer to chat with the support agent and watch what
+        it does.
+      </p>
       {notice && <p className="notice">{notice}</p>}
       <ul className="customers">
         {DEMO_CUSTOMERS.map((customer) => (
@@ -54,6 +60,10 @@ export function LoginView({
       </ul>
       <p role="alert" className="error">
         {error}
+      </p>
+      <p>
+        Reviewing refunds? Open the{' '}
+        <Link href="/operator">operator console</Link> in another tab.
       </p>
     </main>
   );

@@ -28,7 +28,7 @@
   - [x] 10c. Langfuse spans - per-node spans sent to Langfuse Cloud through the LangChain callback handler under the same trace id as `ChatTrace`, with the Langfuse keys in the env validation and the docs, and the app unaffected when Langfuse is unreachable
 - [ ] 11. Demo console - Next.js app in /web (own package.json, deployed on Vercel with Root Directory = web, served at demo.arielbailon.dev) that makes the agent's behavior visible
   - [x] 11a. Customer chat with agent timeline - one-click login as seeded demo customers, SSE chat, and a live side panel per message with route, tools, provider/model, failover, tokens, cost and latency
-  - [ ] 11b. Operator console - pending refunds, approve/reject that resumes the customer thread, with the result appearing in the customer chat
+  - [x] 11b. Operator console - pending refunds, approve/reject that resumes the customer thread, with the result appearing in the customer chat
   - [ ] 11c. Observability dashboard - p50/p95 latency by route, cost per conversation, tokens by model, cached-token share, error and failover rate, a trace explorer linking to Langfuse, and the eval scorecard by provider
 - [ ] 12. Public demo hardening - per-IP rate limiting, a daily token/cost budget that switches the agent to a fixed reply when exceeded, CORS locked to the console origin, nightly reset of demo data (orders, refunds, threads), and demo credentials shown on the login screen
 - [ ] 13. Showcase - 2-minute demo video, a "Live demo" section in the README with screenshots and real production metrics (p95, cost per conversation, eval scores), and the portfolio link replacing the "in progress" placeholder

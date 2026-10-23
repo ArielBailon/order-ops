@@ -7,6 +7,7 @@ import { mergeFacts } from '../memory/facts.js';
 import type { UserMemoryStore } from '../memory/user-memory.store.js';
 import type {
   CreateRefundResult,
+  CustomerRefund,
   DecideResult,
   NewRefund,
   PendingRefund,
@@ -58,6 +59,23 @@ export class InMemoryRefundStore implements RefundStore {
       (r) => r.orderId === orderId && r.status === 'pending_approval',
     );
     return row ? { id: row.id, status: 'pending_approval' } : null;
+  }
+
+  async findForCustomer(
+    id: string,
+    customerId: string,
+  ): Promise<CustomerRefund | null> {
+    const row = this.rows.find(
+      (r) => r.id === id && r.customerId === customerId,
+    );
+    return row
+      ? {
+          id: row.id,
+          orderId: row.orderId,
+          amount: row.amount,
+          status: row.status,
+        }
+      : null;
   }
 
   /** Operator decisions are not part of the eval, so nothing is ever approved. */

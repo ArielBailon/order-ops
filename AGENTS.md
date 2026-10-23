@@ -332,7 +332,13 @@ until the global npm is updated.
   viewer accounts), `POST /api/logout`, `GET /api/session`, and `POST /api/chat`, which streams the
   gateway's SSE unchanged. The gateway JWT stays in an httpOnly cookie (`orderops_token`) and never
   reaches browser JavaScript. Not deployed publicly until item 12 (`docs/deploy.md` "Demo console
-  (Vercel)")
+  (Vercel)"). Operator page `/operator`: one-click login as `operator@example.com` only, with
+  its own cookies (`orderops_operator_token`) so a customer tab and an operator tab work side by
+  side; routes `POST /api/operator/login`, `/api/operator/logout`, `GET /api/operator/session`,
+  `GET /api/operator/refunds` and `POST /api/operator/refunds/[id]/approve|reject` (ids must
+  match `^[A-Za-z0-9_-]{1,100}$`). A customer reply that leaves a refund pending polls
+  `GET /api/refunds/[id]` (customer token, gateway `/refunds/mine/:id`) every 5 seconds and
+  shows the decision as an operator update. Neither token is ever sent on the other side's routes
 - Login: `POST http://localhost:3000/auth/login` with `{ "email", "password" }`;
   send the returned `accessToken` as `Authorization: Bearer <token>` to
   `GET :3001/orders`, `GET :3001/orders/:id`, `GET :3002/customers/me`
@@ -365,6 +371,11 @@ until the global npm is updated.
   the customer wrote again first, the same message is appended to the thread
   instead, including when the client closed the stream early; a thread paused
   on a different request is left alone)
+- Refund status for customers: `GET :3000/refunds/mine/:id` (any valid token, scoped to the
+  caller) returns `{ id, orderId, amount, status, message }` for one of the caller's own refund
+  requests; `message` is the same fixed approved/declined text the thread receives, null until an
+  operator decides. Another customer's id answers 404 exactly like an unknown id. No reason or
+  operator id is returned
 - Observability API (read-only; `viewer` and `operator` tokens, 403 for customers): seed viewer
   `viewer@example.com` (same dev password, token `role: "viewer"`). `GET :3000/observability/summary?since=`
   (default last 7 days: latency p50/p95 overall and by route, cost per conversation, per-model totals,

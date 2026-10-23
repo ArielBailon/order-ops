@@ -56,8 +56,22 @@ export interface PendingRefund {
   createdAt: string;
 }
 
+/** One refund request as its own customer may see it: no reason, no decider. */
+export interface CustomerRefund {
+  id: string;
+  orderId: string;
+  /** Money string with two decimals, for example "89.90". */
+  amount: string;
+  status: StoredRefundStatus | Decision;
+}
+
 export interface RefundStore {
   findOpenForOrder(orderId: string): Promise<RefundRecord | null>;
+  /** The request with this id when `customerId` owns it, otherwise null. */
+  findForCustomer(
+    id: string,
+    customerId: string,
+  ): Promise<CustomerRefund | null>;
   /** True when an operator already approved a refund for the order. */
   hasApprovedForOrder(orderId: string): Promise<boolean>;
   create(input: NewRefund): Promise<CreateRefundResult>;
@@ -86,6 +100,24 @@ export class PrismaRefundStore implements RefundStore {
       select: { id: true },
     });
     return row ? { id: row.id, status: 'pending_approval' } : null;
+  }
+
+  async findForCustomer(
+    id: string,
+    customerId: string,
+  ): Promise<CustomerRefund | null> {
+    const row = await this.prisma.refundRequest.findFirst({
+      where: { id, customerId },
+      select: { id: true, orderId: true, amount: true, status: true },
+    });
+    return row
+      ? {
+          id: row.id,
+          orderId: row.orderId,
+          amount: row.amount.toFixed(2),
+          status: row.status,
+        }
+      : null;
   }
 
   async hasApprovedForOrder(orderId: string): Promise<boolean> {
