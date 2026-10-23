@@ -103,6 +103,10 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY}
       # Empty keeps Bedrock off. No AWS access keys are passed: on EC2 the instance role is used.
       AWS_REGION: ${AWS_REGION:-}
+      # Optional Langfuse spans (metadata only); off while both keys are empty.
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
       ORDERS_SERVICE_URL: http://orders-service:3001
       CUSTOMERS_SERVICE_URL: http://customers-service:3002
     healthcheck:

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { AIMessage, HumanMessage } from '@langchain/core/messages';
 import { Command, type BaseCheckpointSaver } from '@langchain/langgraph';
@@ -7,6 +7,7 @@ import { FaqService } from '../faq/faq.service.js';
 import { REFUND_REPLIES } from '../agent/refund-route.js';
 import { CHEAP_MODEL, STRONG_MODEL } from '../models/models.module.js';
 import { CHECKPOINTER } from '../memory/checkpointer.js';
+import { LANGFUSE, type LangfuseTracing } from '../trace/langfuse.js';
 import { summarize, TraceCollector } from '../trace/trace-recorder.js';
 import {
   TRACE_STORE,
@@ -63,6 +64,10 @@ export class ChatService {
     @Inject(USER_MEMORY) memory: UserMemoryStore,
     @Inject(REFUND_STORE) refunds: RefundStore,
     @Inject(TRACE_STORE) private readonly traces: TraceStore,
+    // Null when Langfuse is off (no keys); spans are metadata only (see trace/langfuse-mask.ts).
+    @Optional()
+    @Inject(LANGFUSE)
+    private readonly langfuse: LangfuseTracing | null = null,
   ) {
     this.graph = buildAgentGraph({
       cheap,
@@ -154,7 +159,17 @@ export class ChatService {
           streamMode: 'custom',
           signal,
           configurable,
-          callbacks: [collector],
+          callbacks: [
+            collector,
+            ...(this.langfuse
+              ? [
+                  this.langfuse.handlerFor(collector.id, {
+                    sessionId: threadId,
+                    userId: customerId,
+                  }),
+                ]
+              : []),
+          ],
         },
       );
       for await (const event of stream as AsyncIterable<AgentEvent>) {
@@ -190,6 +205,10 @@ export class ChatService {
   /** Resolves once the trace writes started so far have settled (they never reject). */
   async flushTraces(): Promise<void> {
     await Promise.allSettled(this.pendingTraces);
+    // Best-effort, like the trace writes: a Langfuse outage must not block shutdown with an error.
+    await this.langfuse?.flush().catch((error: unknown) => {
+      this.logger.warn(`langfuse flush failed: ${(error as Error).name}`);
+    });
   }
 
   /** Best-effort: a trace the store cannot write never changes the chat response. */

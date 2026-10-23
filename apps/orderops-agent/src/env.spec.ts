@@ -37,3 +37,44 @@ describe('validateEnv', () => {
     );
   });
 });
+
+describe('validateEnv Langfuse settings', () => {
+  it('is off without keys and defaults the base URL to Langfuse Cloud', () => {
+    const env = validateEnv({
+      ...valid,
+      LANGFUSE_PUBLIC_KEY: '',
+      LANGFUSE_SECRET_KEY: '',
+      LANGFUSE_BASE_URL: '',
+    });
+    expect(env.LANGFUSE_PUBLIC_KEY).toBeUndefined();
+    expect(env.LANGFUSE_SECRET_KEY).toBeUndefined();
+    expect(env.LANGFUSE_BASE_URL).toBe('https://cloud.langfuse.com');
+  });
+
+  it('accepts both keys and a custom base URL', () => {
+    const env = validateEnv({
+      ...valid,
+      LANGFUSE_PUBLIC_KEY: 'pk-lf-1',
+      LANGFUSE_SECRET_KEY: 'sk-lf-1',
+      LANGFUSE_BASE_URL: 'https://us.cloud.langfuse.com',
+    });
+    expect(env).toMatchObject({
+      LANGFUSE_PUBLIC_KEY: 'pk-lf-1',
+      LANGFUSE_SECRET_KEY: 'sk-lf-1',
+      LANGFUSE_BASE_URL: 'https://us.cloud.langfuse.com',
+    });
+  });
+
+  it.each([
+    ['LANGFUSE_SECRET_KEY', { LANGFUSE_PUBLIC_KEY: 'pk-lf-1' }],
+    ['LANGFUSE_PUBLIC_KEY', { LANGFUSE_SECRET_KEY: 'sk-lf-1' }],
+  ])('fails naming %s when only the other key is set', (missing, partial) => {
+    expect(() => validateEnv({ ...valid, ...partial })).toThrow(missing);
+  });
+
+  it('rejects an invalid base URL', () => {
+    expect(() =>
+      validateEnv({ ...valid, LANGFUSE_BASE_URL: 'not a url' }),
+    ).toThrow();
+  });
+});

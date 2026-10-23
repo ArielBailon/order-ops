@@ -387,6 +387,17 @@ until the global npm is updated.
   conversation, per-model totals and the cached-token share (default: last 7
   days; needs `DATABASE_URL`). System prompts are cached on Anthropic and
   Bedrock via `cacheableSystem`
+- Langfuse (optional): set both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (one alone fails
+  startup; `LANGFUSE_BASE_URL` defaults to `https://cloud.langfuse.com`, EU; use
+  `https://us.cloud.langfuse.com` for US projects) to send a per-node span tree for every chat
+  request to Langfuse Cloud. Off without keys (dev, tests, CI and evals need none). Spans are
+  metadata only: `apps/orderops-agent/src/trace/langfuse-mask.ts` replaces every input and output
+  with `"[redacted]"`, keeps only allowlisted run metadata (`langgraph_node`, `langgraph_step`,
+  `ls_provider`, `ls_model_name`, `ls_model_type`; never the caller JWT LangChain copies from
+  `configurable`), and cuts error messages to the error type. The Langfuse trace id is the
+  `ChatTrace.id` (the `trace` SSE event's `id`) without dashes (32 hex); session id = thread id,
+  user id = customer id. A Langfuse outage never affects replies or `ChatTrace`; pending spans are
+  flushed in the shutdown drain
 - Evals: `npm run eval -- --provider anthropic|openai|bedrock [--ids a,b] [--category
   normal|out_of_scope|adversarial] [--limit N]` runs `evals/dataset.json` (41 cases: normal,
   out-of-scope, adversarial) through the real agent graph with both model tiers pinned to

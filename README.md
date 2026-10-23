@@ -423,6 +423,11 @@ token gets 403): `GET /observability/summary`, `GET /observability/traces` (filt
 paging), `GET /observability/traces/:id` and `GET /observability/evals/latest`. Log in as
 `viewer@example.com` and see `AGENTS.md` for the parameters.
 
+Optionally, set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `.env` to also see each
+request as a span tree (one span per graph node and model call) in Langfuse Cloud. Spans
+carry names, timings, models and token usage only: no messages, replies, tool data or
+tokens leave the server. The Langfuse trace id is the `ChatTrace` id without dashes.
+
 ## Evals
 
 `evals/dataset.json` has 41 cases (normal, out-of-scope, adversarial). The runner

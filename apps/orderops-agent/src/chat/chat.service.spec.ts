@@ -1,4 +1,5 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { BaseCallbackHandler } from '@langchain/core/callbacks/base';
 import { CallbackManager } from '@langchain/core/callbacks/manager';
 import {
   AIMessage,
@@ -25,6 +26,7 @@ import { ORDER_FIXTURE } from './order.fixture.js';
 import type { FaqService } from '../faq/faq.service.js';
 import type { RefundStore } from '../refunds/refund.store.js';
 import type { OrdersClient } from './orders.client.js';
+import type { LangfuseTracing } from '../trace/langfuse.js';
 import type { TraceRecord } from '../trace/trace.store.js';
 
 type Turn = AIMessageChunk[];
@@ -141,7 +143,11 @@ describe('ChatService', () => {
   const traces = { record: vi.fn() };
   const signal = new AbortController().signal;
 
-  const makeService = (model: FakeChatModel, strong = model) =>
+  const makeService = (
+    model: FakeChatModel,
+    strong = model,
+    langfuse: LangfuseTracing | null = null,
+  ) =>
     new ChatService(
       model as unknown as BaseChatModel,
       strong as unknown as BaseChatModel,
@@ -151,6 +157,7 @@ describe('ChatService', () => {
       memory,
       refunds as unknown as RefundStore,
       traces,
+      langfuse,
     );
 
   let traceEvents: Extract<ChatEvent, { type: 'trace' }>[] = [];
@@ -1089,6 +1096,131 @@ describe('ChatService', () => {
       });
     });
   });
+  describe('Langfuse', () => {
+    /** Counts the callbacks it receives; throws on every one when `failing`. */
+    class SpyHandler extends BaseCallbackHandler {
+      name = 'spy-langfuse';
+      awaitHandlers = true;
+      starts = 0;
+      constructor(private readonly failing = false) {
+        super();
+      }
+      handleChainStart(): void {
+        this.starts++;
+        if (this.failing) throw new Error('langfuse down');
+      }
+      handleChatModelStart(): void {
+        if (this.failing) throw new Error('langfuse down');
+      }
+      handleLLMEnd(): void {
+        if (this.failing) throw new Error('langfuse down');
+      }
+    }
+    const tracingWith = (handler: SpyHandler) => ({
+      handlerFor: vi.fn(() => handler),
+      flush: vi.fn(async () => undefined),
+    });
+    const reply = (service: ChatService) =>
+      (async () => {
+        const out: ChatEvent[] = [];
+        for await (const event of service.reply(
+          {
+            message: 'where is my order?',
+            token: 'tok',
+            customerId: CUSTOMER,
+            threadId: THREAD,
+          },
+          signal,
+        ))
+          out.push(event);
+        return out;
+      })();
+
+    it('binds one handler per request to the stored trace id, thread and customer', async () => {
+      const handler = new SpyHandler();
+      const tracing = tracingWith(handler);
+
+      await reply(
+        makeService(
+          new FakeChatModel([[text('Your kettle shipped.')]]),
+          undefined,
+          tracing,
+        ),
+      );
+
+      const recorded = traces.record.mock.calls[0][0] as TraceRecord;
+      expect(tracing.handlerFor).toHaveBeenCalledTimes(1);
+      expect(tracing.handlerFor).toHaveBeenCalledWith(recorded.id, {
+        sessionId: THREAD,
+        userId: CUSTOMER,
+      });
+      expect(handler.starts).toBeGreaterThan(0);
+    });
+
+    it('keeps the reply and the stored trace when the handler throws on every callback', async () => {
+      const healthy = await reply(
+        makeService(new FakeChatModel([[text('Your kettle shipped.')]])),
+      );
+      const healthyRow = traces.record.mock.calls[0][0] as TraceRecord;
+      traces.record.mockClear();
+
+      const events = await reply(
+        makeService(
+          new FakeChatModel([[text('Your kettle shipped.')]]),
+          undefined,
+          tracingWith(new SpyHandler(true)),
+        ),
+      );
+
+      const strip = (list: ChatEvent[]) =>
+        list.map((e) =>
+          e.type === 'trace'
+            ? { ...e, data: { ...e.data, id: '', latencyMs: 0 } }
+            : e,
+        );
+      expect(strip(events)).toEqual(strip(healthy));
+      expect(traces.record.mock.calls[0][0]).toMatchObject({
+        route: healthyRow.route,
+        tools: healthyRow.tools,
+        status: 'ok',
+      });
+    });
+
+    it('flushes Langfuse with the trace writes and survives a failed flush', async () => {
+      const tracing = tracingWith(new SpyHandler());
+      let release!: () => void;
+      tracing.flush.mockReturnValueOnce(
+        new Promise<undefined>((resolve) => {
+          release = () => resolve(undefined);
+        }),
+      );
+      const service = makeService(new FakeChatModel([]), undefined, tracing);
+
+      let flushed = false;
+      const flush = service.flushTraces().then(() => {
+        flushed = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(tracing.flush).toHaveBeenCalledTimes(1);
+      expect(flushed).toBe(false);
+      release();
+      await flush;
+      expect(flushed).toBe(true);
+
+      tracing.flush.mockRejectedValueOnce(new Error('langfuse down'));
+      await expect(service.flushTraces()).resolves.toBeUndefined();
+    });
+
+    it('creates no handler and flushes nothing when Langfuse is off', async () => {
+      const service = makeService(
+        new FakeChatModel([[text('Your kettle shipped.')]]),
+      );
+
+      await expect(reply(service)).resolves.toHaveLength(3);
+      await expect(service.flushTraces()).resolves.toBeUndefined();
+    });
+  });
+
   describe('traces', () => {
     const USAGE = {
       input_tokens: 1_000_000,

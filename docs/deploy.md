@@ -254,6 +254,10 @@ nano .env.production
 Fill in `API_DOMAIN=api.arielbailon.dev`, a URL-safe `POSTGRES_PASSWORD` (`openssl rand -hex 24`),
 `JWT_SECRET` (32+ characters), `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. Leave `AWS_REGION` empty
 until Bedrock access is restored. `LOG_REGION` and `LOG_GROUP` already default to this runbook.
+To send Langfuse spans, also fill in `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` from your
+Langfuse project (and `LANGFUSE_BASE_URL=https://us.cloud.langfuse.com` for a US project); leave
+both empty to keep it off. Spans are metadata only (no message text, tool data or tokens), so
+no customer content reaches Langfuse. The keys are secrets: type them here like the others.
 
 Start everything with the CloudWatch overlay (the first build takes several minutes on 2 vCPUs):
 
