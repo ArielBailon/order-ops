@@ -323,15 +323,26 @@ until the global npm is updated.
   `npm run start:dev` (gateway, :3000),
   `npm run start:dev -- orders-service` (:3001),
   `npm run start:dev -- customers-service` (:3002)
+- Demo console (`web/`, Next.js 16, its own package and lockfile): `cd web && npx -y npm@11 install`,
+  copy `web/.env.example` to `web/.env.local` and set `DEMO_PASSWORD` (the seed password) and
+  `API_URL` (default `http://localhost:3000`), then `npm run dev` (:3005; the three apps must be
+  running). Checks in `web/`: `npm run typecheck` (`next typegen` + `tsc`), `npm test` (Vitest,
+  `src/**/*.spec.ts`), `npm run build`. The browser calls only the console's route handlers:
+  `POST /api/login` (only the three seeded customers; the shared password also opens operator and
+  viewer accounts), `POST /api/logout`, `GET /api/session`, and `POST /api/chat`, which streams the
+  gateway's SSE unchanged. The gateway JWT stays in an httpOnly cookie (`orderops_token`) and never
+  reaches browser JavaScript. Not deployed publicly until item 12 (`docs/deploy.md` "Demo console
+  (Vercel)")
 - Login: `POST http://localhost:3000/auth/login` with `{ "email", "password" }`;
   send the returned `accessToken` as `Authorization: Bearer <token>` to
   `GET :3001/orders`, `GET :3001/orders/:id`, `GET :3002/customers/me`
 - Chat: `POST http://localhost:3000/chat` with `{ "message", "threadId"? }` (uuid; omit to
   start a thread) streams SSE; the `final` event returns the `threadId` to send
   next. A `trace` event follows `final` (or `error`) on every reply still being read:
-  `{ id, route, tools, provider, failovers, tokens: { input, output, cacheRead, cacheWrite },
+  `{ id, route, tools, provider, model, failovers, tokens: { input, output, cacheRead, cacheWrite },
   costUsd, unpriced, latencyMs, status }`, where `id` is the stored `ChatTrace` id (generated
-  by the app), `provider` is the last completed call's, `failovers` counts failed calls another
+  by the app), `provider` and `model` are the last completed call's (often the cheap memory
+  step, not the model that wrote the answer), `failovers` counts failed calls another
   provider answered, and `costUsd` is a six-decimal string or null; metadata only, no message
   text. An aborted request sends none but is still recorded. The gateway creates its LangGraph checkpoint tables at startup in the
   same database; the `UserMemory`, `RefundRequest`, `ChatTrace` and `LlmCall` tables come from
@@ -436,7 +447,8 @@ until the global npm is updated.
   typechecks, `typecheck:spec`, `npm test`), `integration` (pgvector Postgres service container,
   `prisma migrate deploy`, a schema-drift check with `prisma migrate diff --from-config-datasource
   --to-schema prisma/schema.prisma --exit-code` that fails when a schema change has no migration, then
-  `npm run test:e2e`) and `docker` (builds the three runtime images and `tools`, no push). The eval
+  `npm run test:e2e`) and `docker` (builds the three runtime images and `tools`, no push) and `web` (install, typecheck,
+  test and build of the demo console). The eval
   gate is the `deterministic` job in `evals.yml`. Requiring these checks before merge is a GitHub
   repository setting (branch protection or a ruleset), not part of the files
 - CD (`.github/workflows/deploy.yml`, push to `master` + manual dispatch; one job in the protected
@@ -446,7 +458,7 @@ until the global npm is updated.
   one chat; needs `SMOKE_EMAIL`/`SMOKE_PASSWORD`) and rolls back if it fails. The smoke login is
   created once on the host with `$dc run --rm smoke-user`. Role, ECR repositories and GitHub
   settings: `docs/deploy.md` "Continuous deployment". Rollbacks do not revert migrations
-- Lint: `npm run lint` (oxlint over `apps/` and `libs/`)
+- Lint: `npm run lint` (oxlint over `apps/`, `libs/` and `web/src/`)
 - Format: `npm run format` (prettier)
 - Typecheck: `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` (the rspack
   build only transpiles, so it does not catch type errors); spec and e2e files:

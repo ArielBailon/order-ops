@@ -20,7 +20,7 @@
     "eval:regress": "tsx --tsconfig apps/orderops-agent/tsconfig.app.json apps/orderops-agent/src/evals/regress.ts",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/apps/orderops-agent/main",
-    "lint": "oxlint apps/ libs/",
+    "lint": "oxlint apps/ libs/ web/src/",
     "typecheck:spec": "tsc -p tsconfig.spec.json",
     "test": "vitest run",
     "test:watch": "vitest",

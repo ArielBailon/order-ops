@@ -2,7 +2,7 @@ name: CI
 
 # Pull requests run the project's own checks: lint, typecheck, unit tests, a Prisma migration
 # check against a real pgvector Postgres, e2e tests (which use fakes and in-memory stores, not
-# that database), and a Docker build of every image target. The keyless eval gate lives in
+# that database), a Docker build of every image target, and the demo console's own checks. The keyless eval gate lives in
 # evals.yml (its `deterministic` job also runs on every pull request), so it is not repeated
 # here. Nothing in this workflow pushes an image or touches AWS or any secret: deploys are a
 # separate, later workflow.
@@ -100,3 +100,22 @@ jobs:
           else
             docker build --target runtime --build-arg APP="$IMAGE" -t "orderops/$IMAGE:ci" .
           fi
+
+  # The demo console in /web has its own package and lockfile. Root lint already covers web/src.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npx -y npm@11 ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

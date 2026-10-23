@@ -154,6 +154,7 @@ export function summarize(
     route: record.route,
     tools: record.tools,
     provider: record.calls.at(-1)?.provider ?? null,
+    model: record.calls.at(-1)?.model ?? null,
     failovers: record.failovers,
     tokens: {
       input: sum((c) => c.inputTokens),

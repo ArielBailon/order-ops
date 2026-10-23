@@ -138,6 +138,23 @@ gateway fails with `EADDRINUSE` on port 3000, something else is using it; see
 
 For a production-style run of the gateway: `npm run build && npm run start:prod`.
 
+### Demo console
+
+`web/` is a Next.js console: log in with one click as a demo customer, chat, and see for each
+reply the route, tools, provider and model, failovers, tokens, cost and latency. With the three
+apps running:
+
+```bash
+cd web
+npx -y npm@11 install
+cp .env.example .env.local   # set DEMO_PASSWORD to the seed password
+npm run dev                  # http://localhost:3005
+```
+
+The browser only talks to the console's own server, which keeps the gateway token in an httpOnly
+cookie and forwards the chat stream. It is not deployed publicly yet (that waits for the rate
+limits and cost budget of build-plan item 12).
+
 ## Try the whole system by hand
 
 The examples use `curl` in a Bash-style shell (Git Bash, WSL, macOS, Linux). They
@@ -389,17 +406,19 @@ Cora has no orders.
 | -------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `npm test`                                         | Unit tests (Vitest, `**/*.spec.ts`)                                          |
 | `npm run test:e2e`                                 | End-to-end tests (`**/*.e2e-spec.ts`)                                        |
-| `npm run lint`                                     | oxlint over `apps/` and `libs/`                                              |
+| `npm run lint`                                     | oxlint over `apps/`, `libs/` and `web/src/`                                  |
 | `npx tsc -p apps/<app>/tsconfig.app.json --noEmit` | Typecheck one app (the build only transpiles, it does not catch type errors) |
 | `npm run typecheck:spec`                           | Typecheck spec and e2e files                                                 |
 | `npm run build`                                    | Build the gateway (`npx nest build <app>` for the others)                    |
 | `npm run format`                                   | Prettier                                                                     |
+| `npm run typecheck`, `npm test`, `npm run build` in `web/` | Demo console typecheck, unit tests and build                          |
 
 The tests do not need the database or any API key. There is no combined
 `verify` command yet.
 
 On every pull request GitHub Actions runs these checks (`.github/workflows/ci.yml`: `checks`,
-`integration` with a pgvector Postgres and a migration drift check, and `docker`) plus the keyless
+`integration` with a pgvector Postgres and a migration drift check, `docker`, and `web` for the
+demo console) plus the keyless
 eval gate from `evals.yml`. To block merging until they pass, require them in the repository's
 branch protection or ruleset settings on GitHub.
 
@@ -514,6 +533,7 @@ libs/
   auth/                JWT guard, operator guard, credentials, validation pipe
   prisma/              Prisma service and generated client
 prisma/                schema, migrations, seed
+web/                   Next.js demo console (own package)
 evals/                 dataset and versioned results
 docs/                  architecture diagram
 blueprint/             project plans and workflow files (AI Blueprint)

@@ -76,6 +76,8 @@ export interface TraceSummary {
   tools: string[];
   /** Provider of the last completed model call, null when none completed. */
   provider: string | null;
+  /** Model of the last completed model call, null when none completed. */
+  model: string | null;
   failovers: number;
   tokens: {
     input: number;

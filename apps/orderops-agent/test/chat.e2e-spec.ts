@@ -210,6 +210,7 @@ describe('gateway chat (e2e)', () => {
     expect(trace).not.toContain('kettle');
     expect(trace).not.toContain('ord_1001?');
     expect(parseEvents(res.text).at(-1)?.data.tools).toEqual(['get_order']);
+    expect(parseEvents(res.text).at(-1)?.data).toHaveProperty('model');
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe('http://127.0.0.1:3001/orders/ord_1001');
     expect(init.headers).toEqual({ authorization: `Bearer ${token}` });

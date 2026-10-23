@@ -1376,6 +1376,7 @@ describe('ChatService', () => {
         route: 'order',
         tools: ['get_order'],
         provider: row.calls.at(-1)?.provider,
+        model: row.calls.at(-1)?.model,
         failovers: 0,
         latencyMs: row.latencyMs,
         status: 'ok',

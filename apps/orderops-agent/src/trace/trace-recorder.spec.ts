@@ -318,12 +318,13 @@ describe('summarize', () => {
     ],
   };
 
-  it('totals tokens and the priced cost, and names the last provider', () => {
+  it('totals tokens and the priced cost, and names the last provider and model', () => {
     expect(summarize(record)).toEqual({
       id: 'trace-1',
       route: 'order',
       tools: ['get_order'],
       provider: 'openai',
+      model: 'unpriced',
       failovers: 1,
       tokens: { input: 300, output: 60, cacheRead: 120, cacheWrite: 30 },
       costUsd: '0.000625',
@@ -333,11 +334,12 @@ describe('summarize', () => {
     });
   });
 
-  it('has no provider and no cost when no call completed', () => {
+  it('has no provider, model or cost when no call completed', () => {
     expect(
       summarize({ ...record, status: 'error', route: null, calls: [] }),
     ).toMatchObject({
       provider: null,
+      model: null,
       costUsd: null,
       unpriced: 0,
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

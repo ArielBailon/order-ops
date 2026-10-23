@@ -66,6 +66,7 @@ describe('formatSseEvent', () => {
       route: 'order' as const,
       tools: ['get_order'],
       provider: 'anthropic',
+      model: 'claude-sonnet-5',
       failovers: 0,
       tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 },
       costUsd: '0.000125',

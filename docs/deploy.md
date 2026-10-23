@@ -499,6 +499,22 @@ remove them in a later release). A failed pull or checkout changes no running co
 leaves the checkout on the new commit; check out the running SHA (`TAG` in `.env.production`)
 before running compose by hand.
 
+## Demo console (Vercel)
+
+The Next.js console in `web/` is ready for Vercel but is **not deployed yet**: until build-plan
+item 12 adds rate limits and a cost budget, a public chat page lets anyone spend the model API
+keys. When item 12 is done:
+
+1. Create a Vercel project from this repository with **Root Directory** `web`.
+2. Set the environment variables `API_URL=https://api.arielbailon.dev` and `DEMO_PASSWORD`
+   (the demo customers' password) as server-side variables; never prefix them with
+   `NEXT_PUBLIC_`.
+3. Point `demo.arielbailon.dev` at Vercel in Cloudflare (a CNAME, DNS only).
+4. The console logs in as the seeded customers `ana`, `ben` and `cora`, so they must exist in
+   production; section 11 removes them, and item 12 decides how they come back.
+
+The console's server calls the API from Vercel, so the gateway needs no CORS change.
+
 ## Restore a backup
 
 The instance role can only write backups (`s3:PutObject`), on purpose, so the instance cannot

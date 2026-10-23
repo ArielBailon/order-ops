@@ -12,6 +12,7 @@ coverage
 blueprint
 docs
 prototypes
+web
 *.log
 Dockerfile
 .dockerignore
