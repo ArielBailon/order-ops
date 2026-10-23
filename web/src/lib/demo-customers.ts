@@ -14,3 +14,9 @@ export const DEMO_OPERATOR = {
   name: 'Sam Operator',
   email: 'operator@example.com',
 } as const;
+
+/** The seeded read-only viewer; only the dashboard logs in as this account. */
+export const DEMO_VIEWER = {
+  name: 'Vic Viewer',
+  email: 'viewer@example.com',
+} as const;

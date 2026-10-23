@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "LlmCall" ADD COLUMN "seq" INTEGER NOT NULL DEFAULT 0;

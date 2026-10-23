@@ -47,7 +47,12 @@ describe('PrismaTraceStore', () => {
         status: 'ok',
         latencyMs: 1200,
         failovers: 1,
-        calls: { create: trace.calls },
+        calls: {
+          create: [
+            { ...call, seq: 0 },
+            { ...call, tier: 'strong', costUsd: null, seq: 1 },
+          ],
+        },
       },
     });
   });

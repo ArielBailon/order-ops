@@ -513,6 +513,10 @@ keys. When item 12 is done:
 4. The console logs in as the seeded customers `ana`, `ben` and `cora`, so they must exist in
    production; section 11 removes them, and item 12 decides how they come back.
 
+Optionally set `LANGFUSE_PROJECT_URL` (your Langfuse project URL, for example
+`https://us.cloud.langfuse.com/project/<project-id>`) so the dashboard links each trace to
+Langfuse. The dashboard logs in as the seeded viewer `viewer@example.com`.
+
 The console's server calls the API from Vercel, so the gateway needs no CORS change.
 
 ## Restore a backup

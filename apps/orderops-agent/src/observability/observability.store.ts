@@ -182,8 +182,13 @@ export class PrismaObservabilityStore implements ObservabilityStore {
   async getTrace(id: string): Promise<TraceDetail | null> {
     const trace = await this.prisma.chatTrace.findUnique({
       where: { id },
-      // Calls of one trace share a timestamp (one insert); the order is stable, not the call order.
-      include: { calls: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
+      // Call order: `seq` is the position in the request. Calls stored before it existed all have
+      // seq 0 and one timestamp, so their order is stable but not the call order.
+      include: {
+        calls: {
+          orderBy: [{ seq: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        },
+      },
     });
     if (!trace) return null;
     const { calls, ...rest } = trace;

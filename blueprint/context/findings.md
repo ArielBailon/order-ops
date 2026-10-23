@@ -26,10 +26,10 @@
 **Resolution:**
 
 
-### F-22 [P2] open - Trace detail returns model calls in random order, not the call order the spec promises
+### F-22 [P2] fixed - Trace detail returns model calls in random order, not the call order the spec promises
 
 **File:** apps/orderops-agent/src/observability/observability.store.ts:184
 **Found:** 2026-10-22 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** The spec's contract (`current-feature.md`, Data / contracts) says `GET /observability/traces/:id` returns `calls` "in call order". `LlmCall` rows are written in one nested create (`trace.store.ts:48`), so they share `createdAt` (Postgres `now()` is the transaction start), and the tiebreak is `id asc` on a random UUID. The order is therefore stable but arbitrary: a cheap routing call can appear after the strong answer call. The code comment and the new AGENTS.md bullet admit this, but the verified spec was not changed, so the contract and the code disagree. Low impact today (metadata only), but the 11a timeline panel would consume this order.
 **Suggested fix:** Either amend the spec contract to "stable order, not call order" (matching AGENTS.md), or keep call order by adding an `index`/`seq` integer to `LlmCall` (hand-written migration) set from the array position in `trace.store.ts` and order by it. Nothing current is lost by the spec-only change.
-**Resolution:**
+**Resolution:** Feature 11c, step 1: `LlmCall.seq` (migration 20261023120000_llm_call_seq, default 0) is set from each call's position when the trace is stored, and trace detail orders by seq, createdAt, id. New traces list calls in call order; traces stored before the migration keep the old arbitrary order. Specs: trace.store.spec.ts (seq by index), observability.store.spec.ts (order clause). Awaiting re-review.

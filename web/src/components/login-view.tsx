@@ -63,7 +63,8 @@ export function LoginView({
       </p>
       <p>
         Reviewing refunds? Open the{' '}
-        <Link href="/operator">operator console</Link> in another tab.
+        <Link href="/operator">operator console</Link> in another tab, or the{' '}
+        <Link href="/dashboard">observability dashboard</Link>.
       </p>
     </main>
   );

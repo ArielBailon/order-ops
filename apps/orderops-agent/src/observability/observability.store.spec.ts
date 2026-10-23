@@ -256,6 +256,10 @@ describe('PrismaObservabilityStore', () => {
         },
       ],
     });
+    // Calls come back in call order: position first, then the shared timestamp and id.
+    expect(findUnique.mock.calls[0][0].include).toEqual({
+      calls: { orderBy: [{ seq: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }] },
+    });
     findUnique.mockResolvedValueOnce(null);
     await expect(store.getTrace('missing')).resolves.toBeNull();
   });

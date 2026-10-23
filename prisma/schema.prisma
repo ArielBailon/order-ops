@@ -132,6 +132,8 @@ model LlmCall {
   cacheWriteTokens Int
   latencyMs        Int
   costUsd          Decimal?  @db.Decimal(12, 6)
+  /// Position of the call within its request (call order); 0 for rows stored before it existed.
+  seq              Int       @default(0)
   createdAt        DateTime  @default(now())
 
   @@index([traceId])

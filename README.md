@@ -161,6 +161,11 @@ in the other, open `http://localhost:3005/operator`, log in as Sam Operator and 
 reject the request. Within about five seconds the decision appears in the customer chat as an
 operator update.
 
+For the numbers behind the agent, open `http://localhost:3005/dashboard` and log in as Vic Viewer:
+latency by route, cost per conversation, tokens by model, error and failover rates, every stored
+trace with its model calls in call order, and the eval scorecard. Set `LANGFUSE_PROJECT_URL` in
+`web/.env.local` to get a link from each trace to its Langfuse span tree.
+
 ## Try the whole system by hand
 
 The examples use `curl` in a Bash-style shell (Git Bash, WSL, macOS, Linux). They

@@ -44,9 +44,13 @@ export class PrismaTraceStore implements TraceStore {
   constructor(private readonly prisma: PrismaService) {}
 
   async record({ calls, ...trace }: TraceRecord): Promise<void> {
-    // Nested create runs the trace and its calls in one transaction.
+    // Nested create runs the trace and its calls in one transaction. The calls share one
+    // timestamp, so `seq` keeps the order the collector saw them in, which is the call order.
     await this.prisma.chatTrace.create({
-      data: { ...trace, calls: { create: calls } },
+      data: {
+        ...trace,
+        calls: { create: calls.map((call, seq) => ({ ...call, seq })) },
+      },
     });
   }
 }

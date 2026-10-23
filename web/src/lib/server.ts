@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-/** A customer and an operator can be logged in side by side, each with its own cookies. */
-export type SessionKind = 'customer' | 'operator';
+/** A customer, an operator and a viewer can be logged in side by side, each with its own cookies. */
+export type SessionKind = 'customer' | 'operator' | 'viewer';
 
 const COOKIES: Record<SessionKind, { token: string; email: string }> = {
   customer: { token: 'orderops_token', email: 'orderops_email' },
@@ -9,6 +9,7 @@ const COOKIES: Record<SessionKind, { token: string; email: string }> = {
     token: 'orderops_operator_token',
     email: 'orderops_operator_email',
   },
+  viewer: { token: 'orderops_viewer_token', email: 'orderops_viewer_email' },
 };
 
 export const TOKEN_COOKIE = COOKIES.customer.token;
@@ -16,6 +17,14 @@ export const EMAIL_COOKIE = COOKIES.customer.email;
 
 /** Refund ids as the gateway creates them (`ref_<uuid>`); anything else never leaves the console. */
 export const REFUND_ID = /^[A-Za-z0-9_-]{1,100}$/;
+
+/** Fixed text for a gateway 403 on an observability route (a token without the viewer role). */
+export const VIEWER_FORBIDDEN = {
+  403: 'This account cannot read observability data.',
+};
+
+export const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Server-only settings. Null when `DEMO_PASSWORD` is missing, so routes can fail cleanly. */
 export function gatewayConfig(

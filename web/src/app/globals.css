@@ -327,3 +327,144 @@ button:disabled {
   display: flex;
   gap: 0.5rem;
 }
+
+.dashboard-layout {
+  min-height: 100vh;
+}
+
+.dashboard {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.dashboard section {
+  margin-bottom: 2rem;
+}
+
+.dashboard h2 {
+  font-size: 1.25rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3rem;
+}
+
+.dashboard h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.dashboard table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.dashboard th,
+.dashboard td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  /* Break only a value too long for its cell (ids), never short words. */
+  overflow-wrap: break-word;
+}
+
+.dashboard tr.selected {
+  outline: 2px solid var(--accent);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.tile {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.5rem 0.75rem;
+}
+
+.tile dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.tile dd {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bar {
+  display: inline-block;
+  height: 0.6rem;
+  max-width: 10rem;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.window-select select,
+.filters select {
+  font: inherit;
+  padding: 0.2rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.trace-detail {
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+}
+
+.trace-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.trace-fields dt {
+  font-weight: 600;
+}
+
+.trace-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.eval-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.75rem;
+}
+
+.eval-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+}
+
+@media (max-width: 800px) {
+  .dashboard table {
+    display: block;
+    overflow-x: auto;
+  }
+}

@@ -90,6 +90,7 @@ export function OperatorConsole() {
         <h1>Operator console</h1>
         <span>Logged in as {session.email}</span>
         <Link href="/">Customer chat</Link>
+        <Link href="/dashboard">Dashboard</Link>
         <button type="button" onClick={logout}>
           Log out
         </button>

@@ -338,7 +338,15 @@ until the global npm is updated.
   `GET /api/operator/refunds` and `POST /api/operator/refunds/[id]/approve|reject` (ids must
   match `^[A-Za-z0-9_-]{1,100}$`). A customer reply that leaves a refund pending polls
   `GET /api/refunds/[id]` (customer token, gateway `/refunds/mine/:id`) every 5 seconds and
-  shows the decision as an operator update. Neither token is ever sent on the other side's routes
+  shows the decision as an operator update. Neither token is ever sent on the other side's routes.
+  Dashboard `/dashboard`: one-click login as `viewer@example.com` only (cookies
+  `orderops_viewer_token`, a third session beside customer and operator); Metrics (window 24h, 7d
+  or 30d), Traces (route and status filters, 50 per page, detail with the model calls in call
+  order) and Evals (latest run per provider). Routes `POST /api/viewer/login`, `/api/viewer/logout`,
+  `GET /api/viewer/session`, `/api/viewer/summary?window=`, `/api/viewer/traces?route=&status=&before=`
+  (anything else is 400), `/api/viewer/traces/[id]` (uuid) and `/api/viewer/evals`. Optional
+  server-only `LANGFUSE_PROJECT_URL` in `web/.env.local` (for example
+  `https://us.cloud.langfuse.com/project/<project-id>`) adds "Open in Langfuse" to the trace detail
 - Login: `POST http://localhost:3000/auth/login` with `{ "email", "password" }`;
   send the returned `accessToken` as `Authorization: Bearer <token>` to
   `GET :3001/orders`, `GET :3001/orders/:id`, `GET :3002/customers/me`
@@ -382,7 +390,8 @@ until the global npm is updated.
   cached-token share, error and failover rates), `GET :3000/observability/traces?since=&until=&route=&status=&limit=&before=`
   (newest first, `limit` 1-200 default 50, `before` = a trace id from `nextBefore`; 400 for bad
   parameters or an unknown `before`), `GET :3000/observability/traces/:id` (one trace with its model
-  calls, 404 unknown; calls share one timestamp, so their order is stable but not the call order) and
+  calls in call order via `LlmCall.seq`, 404 unknown; traces stored before the `seq` migration keep a
+  stable but arbitrary order) and
   `GET :3000/observability/evals/latest` (newest run per provider from `evals/results/*.json`,
   summaries only, no per-case answers; the files are baked into the image, so new results need a
   commit and a deploy). Metadata only, never message text. The report CLI and the API share
