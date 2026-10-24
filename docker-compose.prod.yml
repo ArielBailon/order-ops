@@ -156,6 +156,13 @@ services:
     profiles: [jobs]
     command: ["npx", "prisma", "db", "seed"]
 
+  # Restores the demo accounts and orders and clears the demo customers' refunds, memory and
+  # threads (traces stay). Run nightly by deploy/orderops-demo-reset.timer, or by hand.
+  demo-reset:
+    <<: *tools
+    profiles: [jobs]
+    command: ["npx", "tsx", "prisma/demo-reset.ts"]
+
   # The login deploy/smoke.sh uses (customer cus_smoke, no orders). Run by hand once, typing the
   # password: SMOKE_EMAIL=... SMOKE_PASSWORD=... $dc run --rm smoke-user. Rerun to rotate it.
   smoke-user:

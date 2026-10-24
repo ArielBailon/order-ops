@@ -152,8 +152,9 @@ npm run dev                  # http://localhost:3005
 ```
 
 The browser only talks to the console's own server, which keeps the gateway token in an httpOnly
-cookie and forwards the chat stream. It is not deployed publicly yet (that waits for the rate
-limits and cost budget of build-plan item 12).
+cookie and forwards the chat stream. The login screen shows the shared demo password, which
+also works on the API. It is not deployed publicly yet (see "Demo console (Vercel)" in
+[docs/deploy.md](docs/deploy.md)).
 
 To watch the human-in-the-loop refund flow, open the console in two tabs: in one, log in as a
 customer and ask for a refund on an order that qualifies (delivered within the last 30 days);
@@ -287,15 +288,17 @@ The refund rules are enforced in code: the order must be delivered, within 30
 days of delivery, the amount cannot exceed the order total, and there can be only
 one open request per order.
 
-The seed dates are fixed and the window is measured against the real clock, so
-the seeded delivered orders (ORD-1001 delivered 2026-08-06, ORD-2003 delivered
-2026-06-05) are outside the window by now. That makes them a good rejection
-example:
+The seed writes order dates relative to the moment it runs: Ben's ORD-2003 was
+delivered 60 days ago, outside the window, which makes it a good rejection
+example. Log in as Ben first:
 
 ```bash
-curl -sN -X POST localhost:3000/chat -H "Authorization: Bearer $TOKEN" \
+curl -s -X POST localhost:3000/auth/login -H 'content-type: application/json' \
+  -d '{"email":"ben@example.com","password":"orderops-dev-password"}'
+BEN=<paste accessToken here>
+curl -sN -X POST localhost:3000/chat -H "Authorization: Bearer $BEN" \
   -H 'content-type: application/json' \
-  -d '{"message":"I want a refund for order ORD-1001, the keyboard keys stick"}'
+  -d '{"message":"I want a refund for order ORD-2003, the stand wobbles"}'
 ```
 
 Expected: `final` has `"route":"refund"` and
@@ -304,15 +307,8 @@ the order is outside the 30-day window. No operator is involved.
 
 ### 9. Refund request that needs an operator
 
-First make an order eligible by giving it a recent delivery date. This SQL runs
-inside the Docker container:
-
-```bash
-docker exec orderops-postgres psql -U orderops -d orderops \
-  -c "UPDATE \"Order\" SET \"deliveredAt\" = now() - interval '2 days' WHERE id = 'ORD-1001';"
-```
-
-Expected: `UPDATE 1`. Send the same refund message again as Ana:
+Ana's ORD-1001 was delivered 5 days before the seed (or the last demo reset) ran, so
+it is inside the window. Send the refund request as Ana:
 
 ```bash
 curl -sN -X POST localhost:3000/chat -H "Authorization: Bearer $TOKEN" \
@@ -399,15 +395,18 @@ All seeded users share the dev-only password `orderops-dev-password`.
 | `operator@example.com` | `op_sam`   | operator | standard |
 | `viewer@example.com`   | `view_vic` | viewer   | standard |
 
-| Order      | Customer | Status                 | Total  |
-| ---------- | -------- | ---------------------- | ------ |
-| `ORD-1001` | Ana      | delivered (2026-08-06) | 89.90  |
-| `ORD-1002` | Ana      | shipped                | 69.50  |
-| `ORD-1003` | Ana      | processing             | 199.00 |
-| `ORD-2001` | Ben      | pending                | 249.99 |
-| `ORD-2002` | Ben      | cancelled              | 29.97  |
-| `ORD-2003` | Ben      | delivered (2026-06-05) | 45.00  |
-| `ORD-2004` | Ben      | shipped                | 74.00  |
+| Order      | Customer | Status                  | Total  |
+| ---------- | -------- | ----------------------- | ------ |
+| `ORD-1001` | Ana      | delivered (5 days ago)  | 89.90  |
+| `ORD-1002` | Ana      | shipped                 | 69.50  |
+| `ORD-1003` | Ana      | processing              | 199.00 |
+| `ORD-2001` | Ben      | pending                 | 249.99 |
+| `ORD-2002` | Ben      | cancelled               | 29.97  |
+| `ORD-2003` | Ben      | delivered (60 days ago) | 45.00  |
+| `ORD-2004` | Ben      | shipped                 | 74.00  |
+
+Order dates are relative to when the seed or the demo reset last ran (`npm run demo:reset`
+restores the demo data and clears the demo customers' refunds, memory and threads).
 
 Cora has no orders.
 
@@ -525,8 +524,9 @@ It needs the AWS and GitHub setup in `docs/deploy.md` ("Continuous deployment").
 - **Prisma asks to reset the database.** You ran `migrate dev`. Answer no and use
   `npx prisma migrate deploy`.
 - **`npm install` crashes.** Use `npx -y npm@11 install`.
-- **Refunds are always `auto_rejected`.** The seeded delivery dates are outside
-  the 30-day window; see [step 9](#9-refund-request-that-needs-an-operator).
+- **ORD-1001 refunds come back `auto_rejected`.** Order dates are written relative
+  to when the seed ran, so ORD-1001 leaves the 30-day window about 25 days later.
+  Run `npx prisma db seed` (or `npm run demo:reset`) again.
 - **Chat returns an `error` event.** `agent_error` means the model call failed
   after failover; check the provider keys and the gateway log.
 

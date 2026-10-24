@@ -13,6 +13,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:all": "concurrently -k -n orders,customers,gateway -c cyan,magenta,green \"npm run start:dev -- orders-service\" \"npm run start:dev -- customers-service\" \"npm run start:dev\"",
+    "demo:reset": "tsx --env-file=.env prisma/demo-reset.ts",
     "ingest:policies": "tsx --env-file=.env apps/orderops-agent/src/faq/ingest-policies.ts",
     "report:traces": "tsx --env-file=.env apps/orderops-agent/src/trace/report-traces.ts",
     "eval": "tsx --env-file=.env --tsconfig apps/orderops-agent/tsconfig.app.json apps/orderops-agent/src/evals/cli.ts",

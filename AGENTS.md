@@ -312,7 +312,17 @@ until the global npm is updated.
 - Database: `docker compose up -d` (Postgres 16 + pgvector on `localhost:5432`)
 - Migrate + seed: `npx prisma migrate dev`, `npx prisma generate`, then `npx prisma db seed`
   (idempotent). Seed customers `ana@example.com`, `ben@example.com`,
-  `cora@example.com` share the dev password `orderops-dev-password`
+  `cora@example.com` share the dev password `orderops-dev-password`. Accounts and orders live in
+  `prisma/demo-data.ts`; order dates are days before the moment the seed runs (ORD-1001 delivered
+  5 days ago, inside the 30-day refund window; ORD-2003 60 days ago, outside it)
+- Demo reset: `npm run demo:reset` (`prisma/demo-reset.ts`, one transaction) upserts the five demo
+  accounts with the dev password and the seven orders with fresh relative dates, and deletes the
+  refund requests, `UserMemory` and LangGraph checkpoint rows (`thread_id` `cus_ana:%`,
+  `cus_ben:%`, `cus_cora:%`) of the three demo customers. It keeps `ChatTrace`/`LlmCall` (dashboard
+  and daily budget), `cus_smoke`, every other customer and `policy_chunks`. Production runs it
+  nightly at 04:00 UTC (`deploy/orderops-demo-reset.timer` -> `deploy/demo-reset.sh` -> compose job
+  `demo-reset`). The console login screen shows `DEMO_PASSWORD` (it opens all five demo accounts,
+  also on the public API)
 - Policy index (FAQ route): `npm run ingest:policies` embeds
   `apps/orderops-agent/policies/*.md` into the `policy_chunks` pgvector table
   (needs `DATABASE_URL` and `OPENAI_API_KEY` in `.env`; replaces the whole

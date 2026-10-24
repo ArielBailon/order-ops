@@ -6,6 +6,6 @@
     "composite": false
   },
   "files": [],
-  "include": ["apps/**/*.ts", "libs/**/*.ts"],
+  "include": ["apps/**/*.ts", "libs/**/*.ts", "prisma/**/*.ts"],
   "exclude": ["node_modules", "dist", "libs/prisma/src/generated"]
 }

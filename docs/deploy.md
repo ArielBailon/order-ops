@@ -334,7 +334,7 @@ README walkthrough, using `https://api.arielbailon.dev` instead of `localhost:30
 $dc run --rm seed
 ```
 
-## 11. Remove the demo customers after verifying
+## 11. Public demo: spend cap and nightly reset
 
 Before the demo is public, set `DAILY_BUDGET_USD` in `.env.production` (for example `2.00`) and
 restart the gateway: once the estimated chat spend of the UTC day reaches it, chat answers with a
@@ -342,17 +342,25 @@ fixed reply until midnight UTC. Requests already running can pass the cap slight
 outside chat (evals, policy ingest, embeddings) are not counted, so keep the AWS budget alert from
 section 9 as the backstop.
 
-The seed password (`orderops-dev-password`) is published in the README, and until build-plan
-item 12 adds rate limits and a spend cap, anyone who can log in can spend your model API keys.
-So after the check above, delete the demo data (this also removes their orders, refund requests
-and memory through the foreign keys):
+The demo accounts (`ana`, `ben`, `cora`, `operator`, `viewer`) use the published dev password
+(`orderops-dev-password`), which the console also shows on its login screen. That is on purpose:
+the per-customer chat limit and the daily budget cap what visitors can spend. A nightly reset
+restores the accounts and orders (with fresh relative dates, so one order is always refundable)
+and clears the demo customers' refund requests, memory and chat threads. Traces, the smoke-test
+login (section C5) and every other account stay. Run it once now (this also brings the demo
+customers back if an earlier version of this runbook deleted them) and turn on the timer:
 
 ```bash
-$dc exec -T postgres psql -U orderops orderops -c 'TRUNCATE "Customer" CASCADE;'
+chmod +x deploy/demo-reset.sh
+deploy/demo-reset.sh          # prints "Demo reset: 5 accounts, 7 orders, ..."
+sudo cp deploy/orderops-demo-reset.service deploy/orderops-demo-reset.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now orderops-demo-reset.timer
+systemctl list-timers orderops-demo-reset.timer --no-pager   # next run 04:00 UTC
 ```
 
-The deploy smoke test uses its own customer (section C5), which stays. How the public demo logs
-in is decided in item 12.
+A failed reset rolls back and changes nothing; `systemctl status orderops-demo-reset.service`
+and `journalctl -u orderops-demo-reset.service` show why.
 
 ## Continuous deployment (GitHub Actions to this instance)
 
@@ -465,8 +473,8 @@ aws iam put-role-policy --role-name "$ROLE" --policy-name orderops-ecr-pull \
 
 ### C5. Smoke login (on the instance, once)
 
-The demo customers are removed after verifying (section 11). The smoke test uses one separate
-customer without orders. Type the password here; it never goes into a file or the repository.
+The smoke test uses its own customer without orders, separate from the demo accounts that the
+nightly reset (section 11) restores and clears. Type the password here; it never goes into a file or the repository.
 The job refuses a password under 16 characters, and rerunning it rotates the password (update
 the GitHub secret to match). The first time, the host still runs the code from before CD, which
 has no `smoke-user` service, so fetch this branch (or `master` once merged) and build first.
@@ -507,17 +515,18 @@ before running compose by hand.
 
 ## Demo console (Vercel)
 
-The Next.js console in `web/` is ready for Vercel but is **not deployed yet**: until build-plan
-item 12 adds rate limits and a cost budget, a public chat page lets anyone spend the model API
-keys. When item 12 is done:
+The Next.js console in `web/` is ready for Vercel but is **not deployed yet**. Before it goes
+public, the rate limits, `DAILY_BUDGET_USD` and the nightly demo reset (section 11) must be in
+place on the instance. Then:
 
 1. Create a Vercel project from this repository with **Root Directory** `web`.
-2. Set the environment variables `API_URL=https://api.arielbailon.dev` and `DEMO_PASSWORD`
-   (the demo customers' password) as server-side variables; never prefix them with
-   `NEXT_PUBLIC_`.
+2. Set the environment variables `API_URL=https://api.arielbailon.dev` and
+   `DEMO_PASSWORD=orderops-dev-password` (the published demo password, which the login screen
+   shows) as server-side variables; never prefix them with `NEXT_PUBLIC_`. The home page is
+   prerendered, so changing `DEMO_PASSWORD` needs a redeploy.
 3. Point `demo.arielbailon.dev` at Vercel in Cloudflare (a CNAME, DNS only).
-4. The console logs in as the seeded customers `ana`, `ben` and `cora`, so they must exist in
-   production; section 11 removes them, and item 12 decides how they come back.
+4. The console logs in as the seeded customers `ana`, `ben` and `cora`: run the demo reset from
+   section 11 once so they exist in production, and keep its nightly timer on.
 
 Optionally set `LANGFUSE_PROJECT_URL` (your Langfuse project URL, for example
 `https://us.cloud.langfuse.com/project/<project-id>`) so the dashboard links each trace to

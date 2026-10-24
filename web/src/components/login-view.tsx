@@ -6,9 +6,11 @@ import { DEMO_CUSTOMERS } from '@/lib/demo-customers';
 
 export function LoginView({
   notice,
+  demoPassword,
   onLoggedIn,
 }: {
   notice: string | null;
+  demoPassword: string | null;
   onLoggedIn: (email: string) => void;
 }) {
   const [pending, setPending] = useState<string | null>(null);
@@ -58,6 +60,12 @@ export function LoginView({
           </li>
         ))}
       </ul>
+      {demoPassword && (
+        <p>
+          Demo password: <code>{demoPassword}</code>. It also works with these
+          emails on the API (<code>POST /auth/login</code>).
+        </p>
+      )}
       <p role="alert" className="error">
         {error}
       </p>

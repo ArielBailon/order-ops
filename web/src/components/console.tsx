@@ -7,7 +7,7 @@ import { LoginView } from './login-view';
 type Session = { state: 'loading' } | { state: 'out' } | { state: 'in'; email: string };
 
 /** Shows the login view or the chat, depending on the server-side session cookie. */
-export function Console() {
+export function Console({ demoPassword }: { demoPassword: string | null }) {
   const [session, setSession] = useState<Session>({ state: 'loading' });
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -30,6 +30,7 @@ export function Console() {
     return (
       <LoginView
         notice={notice}
+        demoPassword={demoPassword}
         onLoggedIn={(email) => {
           setNotice(null);
           setSession({ state: 'in', email });
