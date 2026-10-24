@@ -14,6 +14,7 @@ import {
   emptyConversation,
   toChatEvent,
 } from '@/lib/conversation';
+import { type Inline, parseMarkdown } from '@/lib/markdown';
 import { readSse } from '@/lib/sse';
 import { TimelinePanel } from './timeline-panel';
 
@@ -236,7 +237,7 @@ export function ChatView({
                   key={message.id}
                   className={`message assistant ${message.id === selected?.id ? 'selected' : ''}`}
                 >
-                  {message.text && <p>{message.text}</p>}
+                  {message.text && <ReplyText text={message.text} />}
                   {message.status === 'streaming' && !message.text && (
                     <p className="muted">Thinking…</p>
                   )}
@@ -296,5 +297,48 @@ export function ChatView({
         <TimelinePanel reply={selected} />
       </aside>
     </div>
+  );
+}
+
+/** An agent reply with its markdown rendered; every string goes in as React text, never HTML. */
+function ReplyText({ text }: { text: string }) {
+  return parseMarkdown(text).map((block, index) => {
+    if (block.type === 'list') {
+      const items = block.items.map((item, itemIndex) => (
+        <li key={itemIndex}>
+          <InlineText inlines={item} />
+        </li>
+      ));
+      return block.ordered ? (
+        <ol key={index} start={block.start}>
+          {items}
+        </ol>
+      ) : (
+        <ul key={index}>{items}</ul>
+      );
+    }
+    return (
+      <p key={index}>
+        {block.type === 'heading' ? (
+          <strong>
+            <InlineText inlines={block.inlines} />
+          </strong>
+        ) : (
+          <InlineText inlines={block.inlines} />
+        )}
+      </p>
+    );
+  });
+}
+
+function InlineText({ inlines }: { inlines: Inline[] }) {
+  return inlines.map((inline, index) =>
+    inline.type === 'strong' ? (
+      <strong key={index}>{inline.text}</strong>
+    ) : inline.type === 'code' ? (
+      <code key={index}>{inline.text}</code>
+    ) : (
+      inline.text
+    ),
   );
 }

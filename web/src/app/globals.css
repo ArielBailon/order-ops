@@ -156,6 +156,33 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.message ul,
+.message ol {
+  margin: 0 0 0.4rem;
+  padding-left: 1.25rem;
+}
+
+/* The message list itself is an unstyled <ol>, so nested lists would get its fallback markers. */
+.message ul {
+  list-style: disc;
+}
+
+.message ol {
+  list-style: decimal;
+}
+
+.message li {
+  margin-bottom: 0.2rem;
+}
+
+.message code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  padding: 0 0.2rem;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
 .message.user {
   margin-left: auto;
 }
