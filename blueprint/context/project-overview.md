@@ -50,6 +50,9 @@ Post-MVP:
     - **11b. Operator console** - pending refunds, approve/reject that resumes the customer thread, result shown in the customer chat.
     - **11c. Observability dashboard** - p50/p95 latency by route, cost per conversation, tokens by model, cached-token share, error and failover rate, trace explorer linking to Langfuse, eval scorecard by provider.
 12. **Public demo hardening** - per-IP rate limiting, daily token/cost budget that switches the agent to a fixed reply, CORS locked to the console origin, nightly reset of demo data (orders, refunds, threads), demo credentials on the login screen.
+    - **12a. Daily cost budget** - the gateway sums today's estimated cost from the stored traces and, past a USD cap set in env, answers chat with a fixed reply and no model call (the trace is still stored); resets at UTC midnight.
+    - **12b. Rate limits and origin lock** - per-IP limits on the console's login, chat and refund routes, a per-customer limit on gateway chat as a backstop, and CORS kept off on the gateway with a test that proves it.
+    - **12c. Nightly demo reset and visible credentials** - a reset job that restores the seeded orders and refunds and clears demo threads and memory, run nightly on the host; demo customers restored in production; demo credentials shown on the console login.
 13. **Showcase** - 2-minute demo video, "Live demo" README section with screenshots and real production metrics (p95, cost per conversation, eval scores), portfolio link replacing the "in progress" placeholder.
 
 Out of scope on purpose: rich frontend, real payments, multi-agent setups, frameworks other than LangChain/LangGraph.
@@ -105,8 +108,7 @@ Types are TypeScript-level; exact persistence (Prisma table vs. in-memory mock v
 - `status` (enum) - `pending_approval` | `approved` | `rejected` | `auto_rejected`
 - `decidedBy` (string, nullable) - operator id, or system for `auto_rejected`
 - `createdAt` (datetime)
-
-> TODO: which app owns refund data (gateway vs. `orders-service`).
+- Stored by the gateway (item 4a). Rules enforced in code: delivered order, 30-day window from delivery, `amount <= total`, no other open request for the order.
 
 ### PolicyDocument / PolicyChunk (item 2)
 
@@ -155,7 +157,7 @@ Not applicable - learning/portfolio project.
 
 ## UI/UX
 
-API-first. Interaction through curl/HTTP clients and Swagger; optionally one minimal HTML page to watch SSE streaming. A Next.js demo console (customer chat with agent timeline, operator approvals, observability dashboard) is planned post-MVP (items 10-12) so reviewers can see the agent's decisions, cost and latency.
+API-first. Interaction through curl/HTTP clients and Swagger; optionally one minimal HTML page to watch SSE streaming. A Next.js demo console (customer chat with agent timeline, operator approvals, observability dashboard; item 11) lets reviewers see the agent's decisions, cost and latency; item 12c shows the demo credentials on its login screen.
 
 The API contract is the UX:
 
@@ -166,9 +168,10 @@ The API contract is the UX:
 ## Deployment
 
 - **Local** - `docker compose up -d` (Postgres + pgvector on 5432) and the three Nest apps
-- **Env vars** - `DATABASE_URL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (see `.env.example`)
-- **Post-MVP AWS (item 9)** - single EC2 instance (t4g/t3.small) running docker compose (three Nest apps, Postgres + pgvector, Caddy with automatic TLS) at `api.arielbailon.dev`; Bedrock through the instance IAM role; logs in CloudWatch; nightly `pg_dump` to S3; AWS Budgets alert from day one; health paths `/health` and `/ready`.
+- **Env vars** - see `.env.example` (database URL, provider keys, `AWS_REGION` for Bedrock); production adds the daily USD cap from item 12a. No AWS access keys in production: Bedrock and logs use the instance IAM role.
+- **Post-MVP AWS (item 9)** - single EC2 instance (t4g/t3.small) running docker compose (three Nest apps, Postgres + pgvector, Caddy with automatic TLS) at `api.arielbailon.dev`; Bedrock through the instance IAM role; logs in CloudWatch; nightly `pg_dump` to S3; AWS Budgets alert from day one; health paths `/health` and `/ready`; nightly demo data reset on the host (item 12c).
 - **Post-MVP console (item 11)** - Next.js on Vercel at `demo.arielbailon.dev`.
+- **Real metrics** - p95 latency, cost per conversation and eval scores from production are documented in the README (item 13).
 - **Why not ECS Fargate + RDS + ALB** - cost for a demo; it is the documented next step to scale.
 
 ## Open questions
@@ -178,10 +181,11 @@ The API contract is the UX:
 - **Login credentials** - item 1a adds a gateway login endpoint, which implies customer credentials (a password hash on `Customer`) that project-plan section 4 does not list.
 - **Operator identity** - how operators authenticate and approve/reject refunds (role claim in JWT? separate endpoint?). Needed for item 4.
 - **Embeddings provider** - pgvector RAG (item 2) needs an embeddings model; Anthropic has none. OpenAI or Bedrock (Titan/Cohere)? Item 5's provider layer does not mention embeddings.
-- **Refund business rules** - concrete rules (refund window, max amount, eligible statuses, auto-reject criteria) are not stated. Needed for item 4.
 - **Customer tier and order status values** - enums not defined.
 - **Long-term memory store** - LangGraph `PostgresStore` or a Prisma table? (item 3)
 - **Swagger** - named in UI/UX but not in the tech list (`@nestjs/swagger`).
 - **Evals in CI** - LLM-as-judge and provider comparison need real API keys and cost in CI; secrets and budget handling are not specified (item 7).
-- **Eval results in production** - item 10b serves the latest eval results per provider, but the plan stores them as repo files (`evals/results/*.json`, none committed yet) and the production image ships only build output. Where production reads them from is decided in the 10b spec.
-- **Frontend scope conflict** - project-plan section 3 still says "Out of scope on purpose: rich frontend", while section 7 and build-plan items 10-12 add a Next.js demo console. Reword the out-of-scope line in the plan.
+- **Eval results** - items 7, 10b, 11c and 13 rely on versioned `evals/results/*.json`, but none are committed yet, so the eval scorecard and item 13's eval scores need a live run committed first.
+- **Frontend scope conflict** - project-plan section 3 still says "Out of scope on purpose: rich frontend", while section 7 and build-plan item 11 add a Next.js demo console. Reword the out-of-scope line in the plan.
+- **CORS wording conflict** - build-plan item 12 says "CORS locked to the console origin", while its sub-item 12b (built) keeps CORS off on the gateway because the console calls it server-side. Reword item 12 to match.
+- **Portfolio placeholder** - item 13 replaces an "in progress" placeholder that lives outside this repository (the portfolio site); the plans do not say where.
