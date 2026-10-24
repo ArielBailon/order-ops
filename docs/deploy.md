@@ -359,7 +359,9 @@ sudo systemctl enable --now orderops-demo-reset.timer
 systemctl list-timers orderops-demo-reset.timer --no-pager   # next run 04:00 UTC
 ```
 
-A failed reset rolls back and changes nothing; `systemctl status orderops-demo-reset.service`
+The job uses the same compose files as `deploy.sh` and `--no-deps`, so it only connects to the
+running database and never recreates Postgres or any other container. A failed reset rolls back
+and changes nothing; `systemctl status orderops-demo-reset.service`
 and `journalctl -u orderops-demo-reset.service` show why.
 
 ## Continuous deployment (GitHub Actions to this instance)
@@ -431,7 +433,7 @@ cat > $WORK/gh-policy.json <<EOF2
  {"Sid":"EcrLogin","Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*"},
  {"Sid":"EcrPush","Effect":"Allow",
   "Action":["ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart",
-   "ecr:CompleteLayerUpload","ecr:PutImage","ecr:DescribeImages"],
+   "ecr:CompleteLayerUpload","ecr:PutImage","ecr:BatchGetImage","ecr:DescribeImages"],
   "Resource":"arn:aws:ecr:$REGION:$ACCOUNT:repository/orderops/*"},
  {"Sid":"RunOnInstance","Effect":"Allow","Action":"ssm:SendCommand",
   "Resource":["arn:aws:ec2:$REGION:$ACCOUNT:instance/$INSTANCE",
@@ -446,6 +448,12 @@ aws iam put-role-policy --role-name orderops-github-deploy --policy-name deploy 
   --policy-document file://$WORK/gh-policy.json
 aws iam get-role --role-name orderops-github-deploy --query Role.Arn --output text   # AWS_ROLE_ARN
 ```
+
+`ecr:BatchGetImage` is needed for pushing too: with the containerd image store (the default on
+GitHub's current runners), `docker push` first checks the manifest with a `HEAD` request, and ECR answers
+403 without this action. It still covers only `orderops/*`. A role created from an earlier
+version of this runbook lacks it; rerun the `put-role-policy` command above with the file above
+to update it.
 
 ### C3. Let the instance pull images (adds a policy to the instance role, free)
 

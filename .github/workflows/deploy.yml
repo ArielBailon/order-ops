@@ -50,8 +50,8 @@ jobs:
 
       # The instance is x86_64 and so is this runner. A tag already in ECR (a re-run of the
       # same commit) is skipped: tags are immutable. Provenance is off so each image is one
-      # plain manifest: pushing an attestation list needs ecr:BatchGetImage, which this
-      # push-only role does not have.
+      # plain manifest, with no attestation index in ECR. The push still needs ecr:BatchGetImage
+      # (docker push checks the manifest first): see docs/deploy.md, "Continuous deployment".
       - name: Build and push images
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}/orderops
