@@ -443,6 +443,10 @@ Set `DAILY_BUDGET_USD` (for example `2.00`) to cap the estimated chat spend per 
 today's traces reach it, every chat message gets a fixed "usage limit reached" reply (route
 `budget`) without calling a model, until midnight UTC. Leave it empty for no cap.
 
+Requests are also rate limited: the console allows 10 logins, 10 chat messages and 60 refund
+requests per minute per IP, and the gateway allows 30 chat messages per minute per customer;
+past a limit the answer is a 429 with `Retry-After`. The gateway sends no CORS headers.
+
 ```bash
 npm run report:traces                       # last 7 days
 npm run report:traces -- --since 2026-10-01

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Headers,
+  Inject,
   Post,
   Res,
   UseGuards,
@@ -20,6 +21,7 @@ import {
   formatSseEvent,
 } from './chat.schemas.js';
 import { ChatService } from './chat.service.js';
+import { CHAT_RATE_LIMIT, type FixedWindowLimiter } from './rate-limit.js';
 import { SseConnections } from './sse-connections.js';
 
 @Controller('chat')
@@ -28,6 +30,7 @@ export class ChatController {
   constructor(
     private readonly chat: ChatService,
     private readonly connections: SseConnections,
+    @Inject(CHAT_RATE_LIMIT) private readonly limiter: FixedWindowLimiter,
   ) {}
 
   @Post()
@@ -38,6 +41,19 @@ export class ChatController {
     @Headers('authorization') authorization: string,
     @Res() res: Response,
   ): Promise<void> {
+    // Before the SSE headers: a refused message never reaches the agent and stores no trace.
+    const limit = this.limiter.hit(customerId);
+    if (!limit.allowed) {
+      res
+        .status(429)
+        .set('Retry-After', String(limit.retryAfterSeconds))
+        .json({
+          statusCode: 429,
+          message: `Too many chat messages. Try again in ${limit.retryAfterSeconds} seconds.`,
+        });
+      return;
+    }
+
     // JwtAuthGuard already verified this header as `Bearer <token>`.
     const token = authorization.split(' ')[1];
     const abort = new AbortController();

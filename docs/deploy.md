@@ -523,7 +523,14 @@ Optionally set `LANGFUSE_PROJECT_URL` (your Langfuse project URL, for example
 `https://us.cloud.langfuse.com/project/<project-id>`) so the dashboard links each trace to
 Langfuse. The dashboard logs in as the seeded viewer `viewer@example.com`.
 
-The console's server calls the API from Vercel, so the gateway needs no CORS change.
+The console's server calls the API from Vercel, so the gateway needs no CORS change: it sends
+no CORS headers, and an e2e test keeps it that way.
+
+Rate limits: the console allows 10 logins, 10 chat messages and 60 refund requests per minute
+per client IP (from Vercel's `x-real-ip`). The counts live in each function instance's memory,
+so they are best effort: Vercel can run several instances, and a cold start resets them. The
+hard caps are the gateway's 30 chat messages per minute per customer (one container, exact)
+and `DAILY_BUDGET_USD`, so set the budget in `.env.production` before making the console public.
 
 ## Restore a backup
 

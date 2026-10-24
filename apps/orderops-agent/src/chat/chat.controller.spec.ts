@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ChatController } from './chat.controller.js';
 import type { ChatEvent } from './chat.schemas.js';
 import type { ChatService } from './chat.service.js';
+import { FixedWindowLimiter } from './rate-limit.js';
 import type { SseConnections } from './sse-connections.js';
 
 class FakeResponse extends EventEmitter {
@@ -41,6 +42,7 @@ function setup(reply: () => AsyncGenerator<ChatEvent>) {
   const controller = new ChatController(
     { reply } as unknown as ChatService,
     connections as unknown as SseConnections,
+    new FixedWindowLimiter(100, 60_000),
   );
   const res = new FakeResponse(calls);
   const stream = () =>

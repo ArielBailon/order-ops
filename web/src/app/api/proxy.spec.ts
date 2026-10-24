@@ -1,5 +1,6 @@
 import { NextRequest, type NextResponse } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetRateLimits } from '@/lib/rate-limit';
 import { POST as chat } from './chat/route';
 import { POST as login } from './login/route';
 import { POST as logout } from './logout/route';
@@ -35,6 +36,7 @@ afterEach(() => {
   fetchMock.mockReset();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  resetRateLimits();
 });
 
 describe('POST /api/login', () => {

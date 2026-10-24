@@ -1,8 +1,11 @@
 import type { NextRequest, NextResponse } from 'next/server';
 import { isDemoCustomer } from '@/lib/demo-customers';
+import { rateLimited } from '@/lib/rate-limit';
 import { gatewayLogin, jsonError, readJsonObject } from '@/lib/server';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const limited = rateLimited(request, 'login');
+  if (limited) return limited;
   const body = await readJsonObject(request);
   if (!body) return jsonError(400, 'Send a JSON body.');
   const { email } = body;

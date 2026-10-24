@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { rateLimited, tooManyRequests } from '@/lib/rate-limit';
 import {
   clearSession,
   gatewayConfig,
@@ -12,6 +13,8 @@ const UUID =
 
 /** Forwards one chat turn to the gateway and streams its SSE reply back unchanged. */
 export async function POST(request: NextRequest): Promise<Response> {
+  const limited = rateLimited(request, 'chat');
+  if (limited) return limited;
   const token = request.cookies.get(TOKEN_COOKIE)?.value;
   if (!token) return jsonError(401, 'Your session has ended. Log in again.');
   const body = await readJsonObject(request);
@@ -52,6 +55,13 @@ export async function POST(request: NextRequest): Promise<Response> {
     const response = jsonError(401, 'Your session has ended. Log in again.');
     clearSession(response);
     return response;
+  }
+  // The gateway's per-customer backstop: shown with the console's own text and wait time.
+  if (upstream.status === 429) {
+    const seconds = Number(upstream.headers.get('retry-after'));
+    return tooManyRequests(
+      Number.isInteger(seconds) && seconds >= 1 ? seconds : 60,
+    );
   }
   if (upstream.status === 400)
     return jsonError(400, 'The agent did not accept that message.');

@@ -1,4 +1,5 @@
 import type { NextRequest, NextResponse } from 'next/server';
+import { rateLimited } from '@/lib/rate-limit';
 import { forwardJson, jsonError, REFUND_ID } from '@/lib/server';
 
 const DECISIONS = new Set(['approve', 'reject']);
@@ -7,6 +8,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; decision: string }> },
 ): Promise<NextResponse> {
+  const limited = rateLimited(request, 'refunds');
+  if (limited) return limited;
   const { id, decision } = await params;
   if (!DECISIONS.has(decision) || !REFUND_ID.test(id))
     return jsonError(400, 'Unknown refund request or decision.');

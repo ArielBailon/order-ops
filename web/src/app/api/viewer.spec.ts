@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetRateLimits } from '@/lib/rate-limit';
 import { POST as customerLogin } from './login/route';
 import { POST as operatorLogin } from './operator/login/route';
 import { GET as evals } from './viewer/evals/route';
@@ -20,6 +21,8 @@ const operatorCookie =
 
 const get = (path: string, cookie = viewerCookie) =>
   new NextRequest(`http://localhost:3005${path}`, { headers: { cookie } });
+const post = (path: string) =>
+  new NextRequest(`http://localhost:3005${path}`, { method: 'POST' });
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const upstreamUrl = () => new URL(String(fetchMock.mock.calls[0][0]));
 
@@ -35,6 +38,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  resetRateLimits();
 });
 
 describe('viewer login', () => {
@@ -43,7 +47,7 @@ describe('viewer login', () => {
       Response.json({ accessToken: 'jwt-vic', expiresIn: 3600 }),
     );
 
-    const res = await login();
+    const res = await login(post('/api/viewer/login'));
 
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       email: 'viewer@example.com',
@@ -77,7 +81,7 @@ describe('viewer login', () => {
       Response.json({ accessToken: 'jwt-op', expiresIn: 3600 }),
     );
 
-    await operatorLogin();
+    await operatorLogin(post('/api/operator/login'));
 
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).email).toBe(
       'operator@example.com',

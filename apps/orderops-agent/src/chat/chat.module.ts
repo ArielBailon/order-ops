@@ -12,6 +12,11 @@ import { ChatController } from './chat.controller.js';
 import { ChatService } from './chat.service.js';
 import { DAILY_BUDGET, dailyBudgetFromEnv } from './daily-budget.js';
 import { OrdersClient } from './orders.client.js';
+import {
+  CHAT_LIMIT_PER_MINUTE,
+  CHAT_RATE_LIMIT,
+  FixedWindowLimiter,
+} from './rate-limit.js';
 import { SseConnections } from './sse-connections.js';
 
 @Module({
@@ -45,6 +50,10 @@ import { SseConnections } from './sse-connections.js';
       useFactory: (config: ConfigService, traces: TraceStore) =>
         dailyBudgetFromEnv(config.get<number>('DAILY_BUDGET_USD'), traces),
       inject: [ConfigService, TRACE_STORE],
+    },
+    {
+      provide: CHAT_RATE_LIMIT,
+      useFactory: () => new FixedWindowLimiter(CHAT_LIMIT_PER_MINUTE, 60_000),
     },
   ],
   exports: [ChatService],

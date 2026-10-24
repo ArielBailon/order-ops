@@ -427,6 +427,19 @@ until the global npm is updated.
   It resets at 00:00 UTC. A failing spend query counts as exceeded (fail closed). Requests already
   running when the cap is crossed finish, so spend can pass the cap by their cost. `budget` is a
   reply route only (the router never returns it) and is accepted by `GET /observability/traces?route=`
+- Rate limits (code constants, no env): the gateway allows 30 `POST /chat` per minute per JWT
+  `customerId` (`chat/rate-limit.ts`; fixed one-minute window in memory, exact because the gateway
+  is one container). It is checked after auth and body validation (401 and 400 do not count) and
+  before the stream starts; past it the answer is 429 JSON `{ statusCode: 429, message }` with
+  `Retry-After` (seconds), no agent run and no `ChatTrace`. Demo visitors share the seeded
+  customers, so the limit is shared too. The console (`web/src/lib/rate-limit.ts`) limits per
+  client IP (`x-real-ip`, else the first `x-forwarded-for` entry, else one shared `unknown` key):
+  10 per minute for the three login routes together, 10 for `POST /api/chat`, 60 for the refund
+  routes together (`/api/refunds/[id]`, `/api/operator/refunds`, approve/reject). Checked first,
+  before the body or the gateway; past it: 429 `{ message: "Too many requests. Try again in N
+  seconds." }` with `Retry-After`. A gateway 429 on chat becomes the same console 429. Console
+  counts live in each server instance's memory (best effort on Vercel); the gateway limit and
+  `DAILY_BUDGET_USD` are the caps. The gateway sends no CORS headers (`test/cors.e2e-spec.ts`)
 - Langfuse (optional): set both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (one alone fails
   startup; `LANGFUSE_BASE_URL` defaults to `https://cloud.langfuse.com`, EU; use
   `https://us.cloud.langfuse.com` for US projects) to send a per-node span tree for every chat

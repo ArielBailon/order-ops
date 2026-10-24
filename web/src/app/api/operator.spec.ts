@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetRateLimits } from '@/lib/rate-limit';
 import { POST as customerLogin } from './login/route';
 import { POST as login } from './operator/login/route';
 import { POST as logout } from './operator/logout/route';
@@ -42,6 +43,7 @@ afterEach(() => {
   fetchMock.mockReset();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  resetRateLimits();
 });
 
 describe('operator login', () => {
@@ -50,7 +52,7 @@ describe('operator login', () => {
       Response.json({ accessToken: 'jwt-op', expiresIn: 3600 }),
     );
 
-    const res = await login();
+    const res = await login(request('/api/operator/login', 'POST'));
 
     expect(res.status).toBe(200);
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
