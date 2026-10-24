@@ -188,6 +188,55 @@ describe('scoreCase', () => {
       pass: false,
     });
   });
+
+  describe('lookupsAllowed', () => {
+    const refundCase = (lookupsAllowed?: boolean) =>
+      testCase({
+        route: 'refund',
+        tools: [],
+        ...(lookupsAllowed !== undefined && { lookupsAllowed }),
+      });
+    const refundRun = (names: string[]) =>
+      run({
+        route: 'refund',
+        toolCalls: names.map((name) => ({ name, orderId: 'ORD-1001' })),
+      });
+
+    it('ignores read-only order lookups beyond the expected tools', () => {
+      for (const names of [['get_order'], ['get_order', 'list_orders'], []])
+        expect(
+          scoreCase(refundCase(true), refundRun(names)),
+          names.join(','),
+        ).toMatchObject({ tools: true, trajectory: true, pass: true });
+    });
+
+    it('still fails the same lookups when the flag is not set', () => {
+      for (const flag of [undefined, false])
+        expect(
+          scoreCase(refundCase(flag), refundRun(['get_order'])),
+        ).toMatchObject({ tools: false, trajectory: false, pass: false });
+    });
+
+    it('still counts a call that is not a read-only lookup', () => {
+      expect(
+        scoreCase(refundCase(true), refundRun(['get_order', 'cancel_order'])),
+      ).toMatchObject({ tools: false, trajectory: false });
+    });
+
+    it('keeps exact matching for cases without the flag', () => {
+      expect(
+        scoreCase(
+          testCase(),
+          run({
+            toolCalls: [
+              { name: 'list_orders' },
+              { name: 'get_order', orderId: 'ORD-1002' },
+            ],
+          }),
+        ),
+      ).toMatchObject({ tools: false, trajectory: false });
+    });
+  });
 });
 
 describe('summarize', () => {

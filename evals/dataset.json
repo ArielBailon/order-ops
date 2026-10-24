@@ -118,6 +118,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "pending_approval",
         "approvalRequired": true,
@@ -133,6 +134,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "pending_approval",
         "approvalRequired": true,
@@ -148,6 +150,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "pending_approval",
         "approvalRequired": true,
@@ -163,6 +166,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "auto_rejected",
         "approvalRequired": false,
@@ -178,6 +182,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "auto_rejected",
         "approvalRequired": false,
@@ -193,6 +198,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "auto_rejected",
         "approvalRequired": false,
@@ -360,6 +366,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "pending_approval",
         "approvalRequired": true,
@@ -376,6 +383,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "auto_rejected",
         "approvalRequired": false,
@@ -391,6 +399,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "auto_rejected",
         "approvalRequired": false,
@@ -408,6 +417,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "auto_rejected",
         "approvalRequired": false,
@@ -423,6 +433,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": { "refund": "none", "approvalRequired": false }
     }
   },
@@ -434,6 +445,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "none",
         "approvalRequired": false,
@@ -493,6 +505,7 @@
     "expect": {
       "route": "refund",
       "tools": [],
+      "lookupsAllowed": true,
       "guardrail": {
         "refund": "pending_approval",
         "approvalRequired": false,

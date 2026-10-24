@@ -41,6 +41,12 @@ export const evalCaseSchema = z.strictObject({
     tools: z.array(z.enum(['list_orders', 'get_order'])),
     /** `orderId` per tool call, by position; checked only where given. */
     toolArgs: z.array(z.strictObject({ orderId: z.string() })).optional(),
+    /**
+     * Read-only order lookups (`get_order`, `list_orders`) beyond `tools` do not count against
+     * the tools and trajectory metrics. Set on refund cases: the refund route may look the order
+     * up before proposing, and the outcome is scored by `guardrail`.
+     */
+    lookupsAllowed: z.boolean().optional(),
     guardrail: guardrailSchema.optional(),
   }),
 });
