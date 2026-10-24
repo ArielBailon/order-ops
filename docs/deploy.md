@@ -476,8 +476,12 @@ aws iam put-role-policy --role-name "$ROLE" --policy-name orderops-ecr-pull \
 - Environment variables: `AWS_ROLE_ARN` (from C2), `INSTANCE_ID` (`$INSTANCE`), `AWS_REGION`
   (`us-east-1`), `SMOKE_EMAIL` (for example `smoke@arielbailon.dev`).
 - Environment secret: `SMOKE_PASSWORD`, 16+ random characters (`openssl rand -hex 16`).
-- Branch protection or a ruleset on `master` requiring the `ci.yml` checks (`checks`,
-  `integration`, `docker`) and the `deterministic` eval job.
+- A ruleset on `master` that requires a pull request (squash merges) and these status checks,
+  spelled exactly: `checks`, `integration`, `docker (orderops-agent)`, `docker (orders-service)`,
+  `docker (customers-service)`, `docker (tools)`, `web` (all from `ci.yml`) and `deterministic`
+  (from `evals.yml`). The `docker` job is a matrix, so GitHub reports one check per image and never
+  a plain `docker`: a ruleset that requires `docker` blocks every pull request. Read what the
+  ruleset requires with `gh api repos/ArielBailon/order-ops/rules/branches/master`.
 
 ### C5. Smoke login (on the instance, once)
 
