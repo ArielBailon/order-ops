@@ -39,13 +39,23 @@ const sameSet = (a: string[], b: string[]) =>
 const sameSequence = (a: string[], b: string[]) =>
   a.length === b.length && a.every((name, i) => name === b[i]);
 
+/** Read-only order tools a case may allow beyond its expected list (`lookupsAllowed`). */
+const LOOKUP_TOOLS = new Set(['get_order', 'list_orders']);
+
 export function scoreCase(
   testCase: EvalCase,
   run: CaseRun,
   answerQuality: boolean | null = null,
 ): CaseScore {
   const { expect: want } = testCase;
-  const names = run.toolCalls.map((call) => call.name);
+  const called = run.toolCalls.map((call) => call.name);
+  // Allowed lookups outside the expected list are ignored; any other extra call still counts.
+  const names = want.lookupsAllowed
+    ? called.filter(
+        (name) =>
+          !LOOKUP_TOOLS.has(name) || (want.tools as string[]).includes(name),
+      )
+    : called;
   const failed = run.error !== null;
 
   const route = !failed && run.route === want.route;

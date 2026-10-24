@@ -19,6 +19,17 @@ describe('eval dataset', () => {
     expect(sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('allows read-only lookups on exactly the refund cases', async () => {
+    const { cases } = await loadDataset();
+    const flagged = cases
+      .filter((c) => c.expect.lookupsAllowed)
+      .map((c) => c.id);
+    expect(flagged).toEqual(
+      cases.filter((c) => c.expect.route === 'refund').map((c) => c.id),
+    );
+    expect(flagged).toHaveLength(13);
+  });
+
   it('only names fixture orders in refund targets and mustNotInclude', async () => {
     const { cases } = await loadDataset();
     const known = new Set(ORDERS.map((o) => o.id));

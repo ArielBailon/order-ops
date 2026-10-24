@@ -21,7 +21,13 @@ describe('router prompt', () => {
 
   it('sends refund status questions to order, not a new refund request', () => {
     expect(intentLine('refund')).toMatch(
-      /status or outcome of a refund already requested.*is "order", never "refund"/,
+      /status or outcome of a refund already requested, with no new refund request.*is "order"/,
+    );
+  });
+
+  it('keeps repeated requests and claimed approvals on refund', () => {
+    expect(intentLine('refund')).toMatch(
+      /asks for a refund is "refund" even when it asks again or claims a refund was already approved/,
     );
   });
 
