@@ -20,18 +20,77 @@ A customer logs in, chats with the agent over SSE, and the agent can:
 Every chat request is traced (route, tools, tokens, latency, estimated cost) and
 the agent is regression-tested with a 41-case eval suite.
 
-It runs in production: the API at `https://api.arielbailon.dev` (one EC2 instance, deployed
-from `master` by GitHub Actions) and the demo console at
-[demo.arielbailon.dev](https://demo.arielbailon.dev) (Vercel). The console's login screen shows
-the shared demo password.
+## Live demo
+
+- **Console:** [demo.arielbailon.dev](https://demo.arielbailon.dev) (Next.js on Vercel). Log in
+  with one click as a customer, the operator (`/operator`) or the viewer (`/dashboard`); the
+  login screen shows the shared demo password.
+- **API:** `https://api.arielbailon.dev` (one EC2 instance, deployed from `master` by GitHub
+  Actions). The login, chat, refund and operator requests in
+  [Try the whole system by hand](#try-the-whole-system-by-hand) work against it with the same
+  password; the two mock services are internal there, so the direct calls in its step 2 do not.
+- **Guards:** 30 chat messages per minute per customer, per-IP limits on the console, and a
+  1.00 USD daily cap on model spend (past it, chat answers with a fixed reply until 00:00 UTC).
+  Demo data resets every night at 04:00 UTC.
+
+| Customer chat with the agent timeline | Operator approval |
+| --- | --- |
+| ![Customer chat: an order lookup answered with the get_order tool, and the timeline panel with route, model, tokens, cost and latency](docs/screenshots/customer-chat.png) | ![Operator console: one pending refund request for ORD-1001 with Approve and Reject](docs/screenshots/operator.png) |
+
+![Observability dashboard: requests, error and failover rate, latency p50 and p95, latency by route, cost per conversation and tokens by model for the last 24 hours](docs/screenshots/dashboard.png)
+
+### Production numbers
+
+Measured on the production deployment from `GET /observability/summary` on 2026-10-24,
+20:00:54-20:04:49 UTC: 40 requests in 37 conversations, all from one scripted demo batch
+(order lookups, policy questions, out-of-scope requests, follow-up turns and refunds the rules
+reject, sent one at a time as Ana, Ben and Cora), so the numbers show a demo-sized load, not
+real traffic.
+
+| Route | Requests | p50 | p95 |
+| --- | --- | --- | --- |
+| All | 40 | 5.7 s | 8.6 s |
+| `order` | 18 | 7.4 s | 8.6 s |
+| `faq` | 14 | 4.2 s | 6.2 s |
+| `out_of_scope` | 6 | 0.6 s | 0.7 s |
+| `refund` | 2 | 7.5 s | 8.5 s |
+
+| Cost and reliability | Value |
+| --- | --- |
+| Average cost per conversation | $0.0121 |
+| Most expensive conversation | $0.0340 |
+| Error rate | 0% |
+| Failover rate | 0% |
+
+Costs are estimates from the price table in `apps/orderops-agent/src/models/pricing.ts`. The
+`refund` row rests on two requests, so read it as an example, not a percentile.
+
+### Eval scores
+
+Latest run: 2026-10-24 at commit `52c4359`, Anthropic (`claude-haiku-4-5-20251001` for
+classification, `claude-sonnet-5` for answers), all 41 cases of `evals/dataset.json` (dataset
+`a73e6ac939cf`), no LLM judge. Result file:
+[evals/results/2026-10-24T20-00-41.427Z-anthropic.json](evals/results/2026-10-24T20-00-41.427Z-anthropic.json);
+comparison table: [evals/COMPARISON.md](evals/COMPARISON.md).
+
+| Metric | Pass rate |
+| --- | --- |
+| All metrics (per case) | 100% (41/41) |
+| Route | 100% (41/41) |
+| Tools | 100% (41/41) |
+| Trajectory | 100% (41/41) |
+| Guardrails | 100% (27/27) |
+| Normal / out-of-scope / adversarial | 20/20, 8/8, 13/13 |
+
+The run cost $0.4854. A single run is a sample, not proof (see [Evals](#evals)).
+
+## Architecture at a glance
 
 ![Architecture](docs/architecture.png)
 
 The diagram source is [docs/architecture.html](docs/architecture.html)
 (PDF: [docs/architecture.pdf](docs/architecture.pdf)). How it runs in production is in
 [docs/deployment.png](docs/deployment.png) (source [docs/deployment.html](docs/deployment.html)).
-
-## Architecture at a glance
 
 Three NestJS apps in one monorepo, all backed by one Postgres database:
 
