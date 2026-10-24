@@ -3,7 +3,8 @@
 This runbook puts the production compose (see "Production compose" in the README) on one EC2
 instance at `https://api.arielbailon.dev`: HTTPS from Caddy, logs in CloudWatch, a nightly
 database backup in S3, and no AWS access keys on the server. Releases are automatic from
-`master` (see "Continuous deployment").
+`master` (see "Continuous deployment"). The demo console runs separately on Vercel at
+`https://demo.arielbailon.dev` and calls this API from its server (see "Demo console (Vercel)").
 
 Why one instance and not ECS Fargate + RDS + ALB: it is a demo, and the managed stack costs
 several times more. It remains the documented next step to scale.
@@ -527,22 +528,50 @@ before running compose by hand.
 
 ## Demo console (Vercel)
 
-The Next.js console in `web/` is ready for Vercel but is **not deployed yet**. Before it goes
-public, the rate limits, `DAILY_BUDGET_USD` and the nightly demo reset (section 11) must be in
-place on the instance. Then:
+The Next.js console in `web/` runs on Vercel at `https://demo.arielbailon.dev` (deployed
+2026-10-24). Vercel deploys every push to `master` and builds a preview for every pull request;
+neither is one of the required checks. These are the steps to set it up again (for example
+after the teardown). Before it goes public, the rate limits, `DAILY_BUDGET_USD` and the nightly
+demo reset (section 11) must be in place on the instance. Then:
 
-1. Create a Vercel project from this repository with **Root Directory** `web`.
+1. Create a Vercel project from this repository with **Root Directory** `web`. Vercel detects
+   Next.js; no `vercel.json` is needed.
 2. Set the environment variables `API_URL=https://api.arielbailon.dev` and
    `DEMO_PASSWORD=orderops-dev-password` (the published demo password, which the login screen
    shows) as server-side variables; never prefix them with `NEXT_PUBLIC_`. The home page is
    prerendered, so changing `DEMO_PASSWORD` needs a redeploy.
-3. Point `demo.arielbailon.dev` at Vercel in Cloudflare (a CNAME, DNS only).
+3. In the Vercel project, **Settings → Domains → Add Domain**: `demo.arielbailon.dev`, connected
+   to Production. In Cloudflare, add the CNAME Vercel shows (name `demo`, the project-specific
+   `*.vercel-dns-*.com` target, proxy off / DNS only) and wait for **Valid Configuration**.
 4. The console logs in as the seeded customers `ana`, `ben` and `cora`: run the demo reset from
    section 11 once so they exist in production, and keep its nightly timer on.
 
 Optionally set `LANGFUSE_PROJECT_URL` (your Langfuse project URL, for example
 `https://us.cloud.langfuse.com/project/<project-id>`) so the dashboard links each trace to
-Langfuse. The dashboard logs in as the seeded viewer `viewer@example.com`.
+Langfuse. The dashboard page is prerendered, so a change needs a redeploy. The link only finds a
+trace when the gateway sends spans: the Langfuse keys must be in `.env.production` on the
+instance (see "Turn on Langfuse later" below). The dashboard logs in as the seeded viewer
+`viewer@example.com`.
+
+Check it after deploying: open `https://demo.arielbailon.dev`, log in as Ana and ask "where is
+my order ORD-1001?" (the reply streams and the timeline shows route `order` and tool
+`get_order`), then open `/operator` and `/dashboard`.
+
+### Turn on Langfuse later
+
+If the instance was set up without the Langfuse keys (step 8), add them on the instance and
+recreate only the gateway (open streams end with `shutting_down`; a few seconds of downtime):
+
+```bash
+cd ~/order-ops
+nano .env.production   # LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_BASE_URL=https://us.cloud.langfuse.com for a US project
+dc="docker compose -f docker-compose.prod.yml -f docker-compose.aws.yml --env-file .env.production"
+$dc up -d --no-deps --wait orderops-agent
+$dc logs orderops-agent | grep Langfuse   # "sending metadata-only spans to https://..."
+```
+
+In Langfuse, search for a trace by the `ChatTrace` id **without dashes** (32 hex characters);
+the id with dashes finds nothing.
 
 The console's server calls the API from Vercel, so the gateway needs no CORS change: it sends
 no CORS headers, and an e2e test keeps it that way.
@@ -698,4 +727,5 @@ aws s3api delete-bucket --bucket "$BUCKET" --region "$REGION"
 aws budgets delete-budget --account-id "$ACCOUNT" --budget-name orderops-monthly --region us-east-1
 ```
 
-Then delete the `api` record in Cloudflare.
+Then delete the `api` and `demo` records in Cloudflare, and delete the Vercel project (its
+**Settings → Advanced → Delete Project**; the console cannot work without the API anyway).

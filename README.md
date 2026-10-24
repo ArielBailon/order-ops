@@ -20,10 +20,16 @@ A customer logs in, chats with the agent over SSE, and the agent can:
 Every chat request is traced (route, tools, tokens, latency, estimated cost) and
 the agent is regression-tested with a 41-case eval suite.
 
+It runs in production: the API at `https://api.arielbailon.dev` (one EC2 instance, deployed
+from `master` by GitHub Actions) and the demo console at
+[demo.arielbailon.dev](https://demo.arielbailon.dev) (Vercel). The console's login screen shows
+the shared demo password.
+
 ![Architecture](docs/architecture.png)
 
 The diagram source is [docs/architecture.html](docs/architecture.html)
-(PDF: [docs/architecture.pdf](docs/architecture.pdf)).
+(PDF: [docs/architecture.pdf](docs/architecture.pdf)). How it runs in production is in
+[docs/deployment.png](docs/deployment.png) (source [docs/deployment.html](docs/deployment.html)).
 
 ## Architecture at a glance
 
@@ -31,7 +37,7 @@ Three NestJS apps in one monorepo, all backed by one Postgres database:
 
 | App                        | Port | Role                                                                   |
 | -------------------------- | ---- | ---------------------------------------------------------------------- |
-| `orderops-agent` (gateway) | 3000 | Login, SSE chat, the LangGraph agent, operator refund endpoints        |
+| `orderops-agent` (gateway) | 3000 | Login, SSE chat, the LangGraph agent, operator refunds, observability   |
 | `orders-service`           | 3001 | Mock orders API; returns only the caller's own orders                  |
 | `customers-service`        | 3002 | Mock customers API; verifies credentials, returns the caller's profile |
 
@@ -104,7 +110,7 @@ Run everything from the repository root.
    npx prisma db seed
    ```
 
-   Expected: `Seeded 4 customers and 7 orders`. The users and orders are listed
+   Expected: `Seeded 5 customers and 7 orders` (three customers, the operator and the viewer). The users and orders are listed
    in [Seed data](#seed-data).
 
 6. **Index the policy documents** (needed by the FAQ route)
@@ -153,8 +159,8 @@ npm run dev                  # http://localhost:3005
 
 The browser only talks to the console's own server, which keeps the gateway token in an httpOnly
 cookie and forwards the chat stream. The login screen shows the shared demo password, which
-also works on the API. It is not deployed publicly yet (see "Demo console (Vercel)" in
-[docs/deploy.md](docs/deploy.md)).
+also works on the API. The public copy runs at [demo.arielbailon.dev](https://demo.arielbailon.dev)
+(setup: "Demo console (Vercel)" in [docs/deploy.md](docs/deploy.md)).
 
 To watch the human-in-the-loop refund flow, open the console in two tabs: in one, log in as a
 customer and ask for a refund on an order that qualifies (delivered within the last 30 days);
@@ -229,7 +235,9 @@ data: {"answer":"Order ORD-1002 has shipped! ...","orderIds":["ORD-1002"],"route
 ```
 
 The exact wording varies; the tool call, `route: "order"` and the `orderIds` do not.
-Other event types: `approval_required` (refund waiting for an operator) and
+After `final` (or `error`) comes a `trace` event with the metadata of the request: its trace
+id, route, tools, provider and model, failovers, tokens, estimated cost and latency (never
+message text). Other event types: `approval_required` (refund waiting for an operator) and
 `error` (`agent_error` or `invalid_output`, with a generic message).
 
 ### 4. Store policy question (FAQ)
@@ -375,13 +383,15 @@ docker exec orderops-postgres psql -U orderops -d orderops \
 
 ### Reset the demo data
 
-The seed restores the order dates (it does not touch refund requests). Clear the
-refund requests yourself:
-
 ```bash
-npx prisma db seed
-docker exec orderops-postgres psql -U orderops -d orderops -c "DELETE FROM \"RefundRequest\";"
+npm run demo:reset
 ```
+
+It restores the five demo accounts and the seven orders with fresh relative dates, and deletes
+the three demo customers' refund requests, long-term memory and chat threads, in one
+transaction. Traces and every other account stay. Production runs the same reset nightly at
+04:00 UTC. (`npx prisma db seed` alone restores the accounts and order dates but leaves refund
+requests, memory and threads in place.)
 
 ## Seed data
 
@@ -427,10 +437,10 @@ The tests do not need the database or any API key. There is no combined
 `verify` command yet.
 
 On every pull request GitHub Actions runs these checks (`.github/workflows/ci.yml`: `checks`,
-`integration` with a pgvector Postgres and a migration drift check, `docker`, and `web` for the
-demo console) plus the keyless
-eval gate from `evals.yml`. To block merging until they pass, require them in the repository's
-branch protection or ruleset settings on GitHub.
+`integration` with a pgvector Postgres and a migration drift check, `docker` for each image, and
+`web` for the demo console) plus the keyless eval gate `deterministic` from `evals.yml`. A
+ruleset on `master` requires a pull request (squash merges only) and all of these checks, so
+nothing reaches `master`, and therefore production, without them.
 
 ## Traces and cost
 
@@ -438,9 +448,10 @@ Every chat request writes a `ChatTrace` with one `LlmCall` per model call
 (provider, model, tokens, cached tokens, latency, estimated cost). Only metadata
 is stored, never message text.
 
-Set `DAILY_BUDGET_USD` (for example `2.00`) to cap the estimated chat spend per UTC day: once
-today's traces reach it, every chat message gets a fixed "usage limit reached" reply (route
-`budget`) without calling a model, until midnight UTC. Leave it empty for no cap.
+Set `DAILY_BUDGET_USD` (for example `2.00`; production uses `1.00`) to cap the estimated chat
+spend per UTC day: once today's traces reach it, every chat message gets a fixed "usage limit
+reached" reply (route `budget`) without calling a model, until midnight UTC. Leave it empty for
+no cap.
 
 Requests are also rate limited: the console allows 10 logins, 10 chat messages and 60 refund
 requests per minute per IP, and the gateway allows 30 chat messages per minute per customer;
@@ -463,7 +474,9 @@ paging), `GET /observability/traces/:id` and `GET /observability/evals/latest`. 
 Optionally, set `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` in `.env` to also see each
 request as a span tree (one span per graph node and model call) in Langfuse Cloud. Spans
 carry names, timings, models and token usage only: no messages, replies, tool data or
-tokens leave the server. The Langfuse trace id is the `ChatTrace` id without dashes.
+tokens leave the server. The Langfuse trace id is the `ChatTrace` id without dashes, so search
+Langfuse for the id with the dashes removed. Use `LANGFUSE_BASE_URL=https://us.cloud.langfuse.com`
+for a US project (the default is the EU region).
 
 ## Evals
 
@@ -494,7 +507,7 @@ npm run eval:regress      # fails (exit 1) only if the pass rate fell more than 
 ```
 
 Both need no keys. With no committed results they print `No eval results found`
-and skip.
+and skip. The committed runs are in `evals/results/` (Anthropic so far).
 
 CI (`.github/workflows/evals.yml`): pull requests run the keyless deterministic
 checks. The live job runs on manual dispatch or weekly (Mondays 06:00 UTC) with
@@ -543,28 +556,39 @@ apps/
     src/faq/           policy ingest and retrieval
     src/memory/        checkpointer and long-term user memory
     src/models/        providers, failover, pricing
-    src/trace/         trace writer and the cost report
+    src/trace/         trace writer, cost report, Langfuse spans
+    src/observability/ read-only metrics, traces and eval API (viewer role)
     src/evals/         eval runner, metrics, judge, compare, regress
     policies/          FAQ source documents
   orders-service/      mock orders microservice
   customers-service/   mock customers microservice
 libs/
-  auth/                JWT guard, operator guard, credentials, validation pipe
+  auth/                JWT guard, role guards, credentials, validation pipe
   prisma/              Prisma service and generated client
-prisma/                schema, migrations, seed
-web/                   Next.js demo console (own package)
+prisma/                schema, migrations, seed, demo data and demo reset
+web/                   Next.js demo console (own package, deployed on Vercel)
 evals/                 dataset and versioned results
-docs/                  architecture diagram
+deploy/                host scripts and systemd timers (deploy, smoke test, backup, demo reset)
+.github/workflows/     ci.yml (pull requests), evals.yml, deploy.yml (CD to AWS)
+docs/                  architecture and deployment diagrams, AWS runbook (deploy.md)
 blueprint/             project plans and workflow files (AI Blueprint)
 ```
 
 ## Deployment
 
-An AWS deployment with real metrics is planned (build-plan feature 9). The
-container packaging is done and can be rehearsed on any machine with Docker. The
-step-by-step runbook for the single-instance AWS setup (EC2, CloudWatch logs, S3
-backups, budget alert, Cloudflare DNS) is [docs/deploy.md](docs/deploy.md); the
-host files it uses are in `deploy/` and `docker-compose.aws.yml`.
+Production runs on one EC2 instance (`us-east-1`) at `https://api.arielbailon.dev`: Caddy
+(TLS) in front of the three apps and Postgres + pgvector, logs in CloudWatch, a nightly
+`pg_dump` to S3, a nightly demo data reset, and no AWS access keys on the host (the instance
+role only). Every merge to `master` deploys automatically (`.github/workflows/deploy.yml`):
+GitHub OIDC to AWS, images to ECR tagged with the commit SHA, deploy over SSM, a smoke test with
+one real chat, and a rollback to the previous SHA if anything fails. The demo console runs on
+Vercel at [demo.arielbailon.dev](https://demo.arielbailon.dev) and calls the API from its
+server. Public demo guards: per-IP limits on the console, 30 chat messages per minute per
+customer on the gateway, and the daily USD cap.
+
+The step-by-step runbook (AWS setup, CD, the Vercel console, backups and teardown) is
+[docs/deploy.md](docs/deploy.md); the host files it uses are in `deploy/` and
+`docker-compose.aws.yml`. The diagram is [docs/deployment.png](docs/deployment.png).
 
 ### Production compose (local rehearsal)
 

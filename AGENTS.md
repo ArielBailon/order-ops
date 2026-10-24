@@ -341,8 +341,10 @@ until the global npm is updated.
   `POST /api/login` (only the three seeded customers; the shared password also opens operator and
   viewer accounts), `POST /api/logout`, `GET /api/session`, and `POST /api/chat`, which streams the
   gateway's SSE unchanged. The gateway JWT stays in an httpOnly cookie (`orderops_token`) and never
-  reaches browser JavaScript. Not deployed publicly until item 12 (`docs/deploy.md` "Demo console
-  (Vercel)"). Operator page `/operator`: one-click login as `operator@example.com` only, with
+  reaches browser JavaScript. Deployed on Vercel (Root Directory `web`, production branch `master`,
+  previews on pull requests) at `https://demo.arielbailon.dev`, with the server-side env `API_URL`,
+  `DEMO_PASSWORD` and `LANGFUSE_PROJECT_URL` set in the Vercel project (`docs/deploy.md` "Demo
+  console (Vercel)"). Operator page `/operator`: one-click login as `operator@example.com` only, with
   its own cookies (`orderops_operator_token`) so a customer tab and an operator tab work side by
   side; routes `POST /api/operator/login`, `/api/operator/logout`, `GET /api/operator/session`,
   `GET /api/operator/refunds` and `POST /api/operator/refunds/[id]/approve|reject` (ids must
@@ -428,7 +430,7 @@ until the global npm is updated.
   conversation, per-model totals and the cached-token share (default: last 7
   days; needs `DATABASE_URL`). System prompts are cached on Anthropic and
   Bedrock via `cacheableSystem`
-- Daily budget (optional): `DAILY_BUDGET_USD` (positive USD; empty = off, as in dev, tests, CI and
+- Daily budget (optional; production runs with `1.00`): `DAILY_BUDGET_USD` (positive USD; empty = off, as in dev, tests, CI and
   evals; zero, negative or non-numeric fails startup). Before running the agent, `/chat` sums the
   estimated cost of today's traces (`LlmCall.costUsd` since 00:00 UTC; unpriced calls add 0; evals,
   ingest and embeddings are not counted). At or above the cap it answers with a fixed `final`
@@ -460,7 +462,10 @@ until the global npm is updated.
   `configurable`), and cuts error messages to the error type. The Langfuse trace id is the
   `ChatTrace.id` (the `trace` SSE event's `id`) without dashes (32 hex); session id = thread id,
   user id = customer id. A Langfuse outage never affects replies or `ChatTrace`; pending spans are
-  flushed in the shutdown drain
+  flushed in the shutdown drain. Production sends spans to the US project (keys and
+  `LANGFUSE_BASE_URL` in `.env.production` on the instance, set 2026-10-24). Spans go out over
+  OpenTelemetry (`@langfuse/otel`); Langfuse's v3 read API (`/api/public/traces`, removed
+  2026-11-16) is not used by the app, so read spans with `GET /api/public/v2/observations?traceId=`
 - Evals: `npm run eval -- --provider anthropic|openai|bedrock [--ids a,b] [--category
   normal|out_of_scope|adversarial] [--limit N]` runs `evals/dataset.json` (41 cases: normal,
   out-of-scope, adversarial) through the real agent graph with both model tiers pinned to
