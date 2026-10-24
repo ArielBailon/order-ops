@@ -501,8 +501,12 @@ until the global npm is updated.
   --to-schema prisma/schema.prisma --exit-code` that fails when a schema change has no migration, then
   `npm run test:e2e`) and `docker` (builds the three runtime images and `tools`, no push) and `web` (install, typecheck,
   test and build of the demo console). The eval
-  gate is the `deterministic` job in `evals.yml`. Requiring these checks before merge is a GitHub
-  repository setting (branch protection or a ruleset), not part of the files
+  gate is the `deterministic` job in `evals.yml`. The `master` ruleset (a GitHub setting, not part of
+  the files) requires a pull request, squash merges only, and the checks `checks`, `integration`,
+  `docker (orderops-agent)`, `docker (orders-service)`, `docker (customers-service)`, `docker (tools)`,
+  `web` and `deterministic` (the `docker` matrix reports one check per image, never a plain
+  `docker`), so changes reach `master` only through a pull request; read it with
+  `gh api repos/ArielBailon/order-ops/rules/branches/master`
 - CD (`.github/workflows/deploy.yml`, push to `master` + manual dispatch; one job in the protected
   `production` environment, GitHub OIDC to AWS, no keys): builds the three apps and `tools`, pushes
   them to ECR tagged with the commit SHA, runs `deploy/deploy.sh <sha>` on the instance over SSM
