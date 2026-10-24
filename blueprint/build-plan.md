@@ -34,4 +34,4 @@
   - [x] 12a. Daily cost budget - the gateway sums today's estimated cost from the stored traces and, past a USD cap set in env, answers chat with a fixed reply and no model call (the trace is still stored); the budget resets at UTC midnight
   - [x] 12b. Rate limits and origin lock - per-IP limits on the console's login, chat and refund routes, a per-customer limit on gateway chat as a backstop, and CORS kept off on the gateway with a test that proves it
   - [x] 12c. Nightly demo reset and visible credentials - a reset job that restores the seeded orders and refunds and clears demo threads and memory, run nightly on the host; demo customers restored in production; demo credentials shown on the console login
-- [ ] 13. Showcase - 2-minute demo video, a "Live demo" section in the README with screenshots and real production metrics (p95, cost per conversation, eval scores), and the portfolio link replacing the "in progress" placeholder
+- [x] 13. Showcase - 2-minute demo video, a "Live demo" section in the README with screenshots and real production metrics (p95, cost per conversation, eval scores), and the portfolio link replacing the "in progress" placeholder
