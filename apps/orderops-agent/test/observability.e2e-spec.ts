@@ -190,6 +190,17 @@ describe('observability API (e2e)', () => {
     });
   });
 
+  it('accepts the budget reply route as a filter', async () => {
+    listTraces.mockResolvedValue({ traces: [], nextBefore: null });
+
+    await request(app.getHttpServer())
+      .get('/observability/traces?route=budget')
+      .set('Authorization', await as('viewer'))
+      .expect(200);
+
+    expect(listTraces).toHaveBeenLastCalledWith({ route: 'budget', limit: 50 });
+  });
+
   it.each([
     ['/observability/summary?since=yesterday'],
     ['/observability/traces?since=not-a-date'],

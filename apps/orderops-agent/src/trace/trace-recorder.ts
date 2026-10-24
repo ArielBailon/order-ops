@@ -5,7 +5,7 @@ import type { BaseMessage } from '@langchain/core/messages';
 import type { ChatGeneration, LLMResult } from '@langchain/core/outputs';
 import type {
   ChatEvent,
-  ChatRoute,
+  ReplyRoute,
   TraceSummary,
 } from '../chat/chat.schemas.js';
 import { costUsd, usageOf } from '../models/pricing.js';
@@ -43,7 +43,7 @@ export class TraceCollector extends BaseCallbackHandler {
   private failovers = 0;
   /** Provider of the last call that failed, until the next call completes. */
   private failedProvider: string | null = null;
-  private route: ChatRoute | null = null;
+  private route: ReplyRoute | null = null;
   private sawError = false;
   private readonly started = new Map<
     string,

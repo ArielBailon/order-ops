@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/prisma';
-import type { ChatRoute } from '../chat/chat.schemas.js';
+import type { ReplyRoute } from '../chat/chat.schemas.js';
 
 export const TRACE_STORE = Symbol('TRACE_STORE');
 
@@ -25,7 +25,7 @@ export interface TraceRecord {
   id: string;
   customerId: string;
   threadId: string;
-  route: ChatRoute | null;
+  route: ReplyRoute | null;
   tools: string[];
   status: TraceStatus;
   latencyMs: number;
@@ -37,6 +37,8 @@ export interface TraceRecord {
 /** Per-request traces: metadata only, no prompts, messages, tool arguments or results. */
 export interface TraceStore {
   record(trace: TraceRecord): Promise<void>;
+  /** Estimated USD of the model calls of traces created at or after `since`; unpriced calls add 0. */
+  costSince(since: Date): Promise<number>;
 }
 
 @Injectable()
@@ -52,5 +54,14 @@ export class PrismaTraceStore implements TraceStore {
         calls: { create: calls.map((call, seq) => ({ ...call, seq })) },
       },
     });
+  }
+
+  async costSince(since: Date): Promise<number> {
+    // Filtered through the trace, so the ChatTrace.createdAt index does the work.
+    const { _sum } = await this.prisma.llmCall.aggregate({
+      _sum: { costUsd: true },
+      where: { trace: { createdAt: { gte: since } } },
+    });
+    return _sum.costUsd === null ? 0 : Number(_sum.costUsd);
   }
 }

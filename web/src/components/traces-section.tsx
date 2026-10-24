@@ -19,7 +19,7 @@ import {
 import { SectionState } from './section-state';
 import { useViewerData } from './use-viewer-data';
 
-const ROUTES = ['faq', 'order', 'refund', 'out_of_scope'];
+const ROUTES = ['faq', 'order', 'refund', 'out_of_scope', 'budget'];
 const STATUSES = ['ok', 'error', 'aborted'];
 const time = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',

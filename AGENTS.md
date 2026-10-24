@@ -418,6 +418,15 @@ until the global npm is updated.
   conversation, per-model totals and the cached-token share (default: last 7
   days; needs `DATABASE_URL`). System prompts are cached on Anthropic and
   Bedrock via `cacheableSystem`
+- Daily budget (optional): `DAILY_BUDGET_USD` (positive USD; empty = off, as in dev, tests, CI and
+  evals; zero, negative or non-numeric fails startup). Before running the agent, `/chat` sums the
+  estimated cost of today's traces (`LlmCall.costUsd` since 00:00 UTC; unpriced calls add 0; evals,
+  ingest and embeddings are not counted). At or above the cap it answers with a fixed `final`
+  (`route: "budget"`, `orderIds: []`, text in `chat/daily-budget.ts`) and a normal `trace`, with no
+  model, orders or checkpoint call (the message is not added to the thread); the trace is stored.
+  It resets at 00:00 UTC. A failing spend query counts as exceeded (fail closed). Requests already
+  running when the cap is crossed finish, so spend can pass the cap by their cost. `budget` is a
+  reply route only (the router never returns it) and is accepted by `GET /observability/traces?route=`
 - Langfuse (optional): set both `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` (one alone fails
   startup; `LANGFUSE_BASE_URL` defaults to `https://cloud.langfuse.com`, EU; use
   `https://us.cloud.langfuse.com` for US projects) to send a per-node span tree for every chat

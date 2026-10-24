@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/prisma';
-import type { ChatRoute } from '../chat/chat.schemas.js';
+import type { ReplyRoute } from '../chat/chat.schemas.js';
 import {
   conversations,
   latency,
@@ -111,7 +111,7 @@ export function toListItem(
     createdAt: trace.createdAt.toISOString(),
     customerId: trace.customerId,
     threadId: trace.threadId,
-    route: trace.route as ChatRoute | null,
+    route: trace.route as ReplyRoute | null,
     tools: trace.tools,
     status: trace.status,
     latencyMs: trace.latencyMs,

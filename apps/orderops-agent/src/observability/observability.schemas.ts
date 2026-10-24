@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { chatRouteSchema, type ChatRoute } from '../chat/chat.schemas.js';
+import { replyRouteSchema, type ReplyRoute } from '../chat/chat.schemas.js';
 import type { ModelRow } from '../trace/report.js';
 import type { TraceStatus } from '../trace/trace.store.js';
 
@@ -14,7 +14,7 @@ export type SummaryQuery = z.infer<typeof summaryQuerySchema>;
 export const traceListQuerySchema = z.object({
   since: isoDate.optional(),
   until: isoDate.optional(),
-  route: chatRouteSchema.optional(),
+  route: replyRouteSchema.optional(),
   status: z.enum(['ok', 'error', 'aborted']).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   before: z.uuid().optional(),
@@ -54,7 +54,7 @@ export interface TraceListItem {
   createdAt: string;
   customerId: string;
   threadId: string;
-  route: ChatRoute | null;
+  route: ReplyRoute | null;
   tools: string[];
   status: TraceStatus;
   latencyMs: number;

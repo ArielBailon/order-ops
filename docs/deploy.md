@@ -336,6 +336,12 @@ $dc run --rm seed
 
 ## 11. Remove the demo customers after verifying
 
+Before the demo is public, set `DAILY_BUDGET_USD` in `.env.production` (for example `2.00`) and
+restart the gateway: once the estimated chat spend of the UTC day reaches it, chat answers with a
+fixed reply until midnight UTC. Requests already running can pass the cap slightly, and costs
+outside chat (evals, policy ingest, embeddings) are not counted, so keep the AWS budget alert from
+section 9 as the backstop.
+
 The seed password (`orderops-dev-password`) is published in the README, and until build-plan
 item 12 adds rate limits and a spend cap, anyone who can log in can spend your model API keys.
 So after the check above, delete the demo data (this also removes their orders, refund requests

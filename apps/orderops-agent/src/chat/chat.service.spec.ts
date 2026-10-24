@@ -22,6 +22,7 @@ import {
   RefundNotPausedError,
   threadKey,
 } from './chat.service.js';
+import { BUDGET_REPLY, type DailyBudget } from './daily-budget.js';
 import { ORDER_FIXTURE } from './order.fixture.js';
 import type { FaqService } from '../faq/faq.service.js';
 import type { RefundStore } from '../refunds/refund.store.js';
@@ -140,13 +141,14 @@ describe('ChatService', () => {
     hasApprovedForOrder: vi.fn(),
     create: vi.fn(),
   };
-  const traces = { record: vi.fn() };
+  const traces = { record: vi.fn(), costSince: vi.fn() };
   const signal = new AbortController().signal;
 
   const makeService = (
     model: FakeChatModel,
     strong = model,
     langfuse: LangfuseTracing | null = null,
+    budget: DailyBudget | null = null,
   ) =>
     new ChatService(
       model as unknown as BaseChatModel,
@@ -158,6 +160,7 @@ describe('ChatService', () => {
       refunds as unknown as RefundStore,
       traces,
       langfuse,
+      budget,
     );
 
   let traceEvents: Extract<ChatEvent, { type: 'trace' }>[] = [];
@@ -1096,6 +1099,87 @@ describe('ChatService', () => {
       });
     });
   });
+  describe('daily budget', () => {
+    const budgetOf = (exceeded: boolean | Error) =>
+      ({
+        exceeded: vi.fn(async () => {
+          if (exceeded instanceof Error) throw exceeded;
+          return exceeded;
+        }),
+      }) as unknown as DailyBudget;
+
+    it('answers with the fixed reply and no model, orders or checkpoint call once exceeded', async () => {
+      const model = new FakeChatModel([]);
+      const events = await run(
+        model,
+        'where is my order?',
+        signal,
+        {},
+        makeService(model, model, null, budgetOf(true)),
+      );
+
+      expect(events).toEqual([
+        {
+          type: 'final',
+          data: {
+            answer: BUDGET_REPLY,
+            orderIds: [],
+            route: 'budget',
+            threadId: THREAD,
+          },
+        },
+      ]);
+      expect(traceEvents).toHaveLength(1);
+      expect(traceEvents[0].data).toMatchObject({
+        route: 'budget',
+        tools: [],
+        provider: null,
+        model: null,
+        costUsd: null,
+        status: 'ok',
+      });
+      expect(model.routerInputs).toHaveLength(0);
+      expect(model.turnInputs).toHaveLength(0);
+      expect(orders.listOrders).not.toHaveBeenCalled();
+      expect(orders.getOrder).not.toHaveBeenCalled();
+      const checkpoints = [];
+      for await (const tuple of saver.list({})) checkpoints.push(tuple);
+      expect(checkpoints).toHaveLength(0);
+      await vi.waitFor(() => expect(traces.record).toHaveBeenCalledTimes(1));
+      expect(traces.record.mock.calls[0][0]).toMatchObject({
+        id: traceEvents[0].data.id,
+        route: 'budget',
+        calls: [],
+        status: 'ok',
+      });
+    });
+
+    it('runs the agent as usual while under the cap', async () => {
+      const model = new FakeChatModel([[text('Your kettle shipped.')]]);
+      const budget = budgetOf(false);
+      const events = await run(
+        model,
+        'where is my order?',
+        signal,
+        {},
+        makeService(model, model, null, budget),
+      );
+
+      expect(budget.exceeded).toHaveBeenCalledTimes(1);
+      expect(events.at(-1)).toMatchObject({
+        type: 'final',
+        data: { route: 'order' },
+      });
+    });
+
+    it('queries no spend when no budget is configured', async () => {
+      const model = new FakeChatModel([[text('Your kettle shipped.')]]);
+      await run(model);
+
+      expect(traces.costSince).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Langfuse', () => {
     /** Counts the callbacks it receives; throws on every one when `failing`. */
     class SpyHandler extends BaseCallbackHandler {

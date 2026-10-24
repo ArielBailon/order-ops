@@ -6,7 +6,7 @@ import { buildAgentGraph, type CallerConfig } from '../agent/agent.graph.js';
 import { ChatAgentError } from '../chat/chat.errors.js';
 import type {
   AgentEvent,
-  ChatRoute,
+  ReplyRoute,
   RefundSummary,
 } from '../chat/chat.schemas.js';
 import { FaqService, type PolicySearch } from '../faq/faq.service.js';
@@ -83,7 +83,7 @@ export interface CaseRun {
   id: string;
   /** Error code or name when the run threw or timed out; the rest is then partial. */
   error: string | null;
-  route: ChatRoute | null;
+  route: ReplyRoute | null;
   /** Tool calls over all turns, in call order. */
   toolCalls: ToolCallRun[];
   /** What the tools returned, in call order; input for the answer-quality judge. */

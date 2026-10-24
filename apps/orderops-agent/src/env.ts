@@ -28,6 +28,11 @@ const envSchema = z
       .optional()
       .transform((value) => value || 'https://cloud.langfuse.com')
       .pipe(z.url()),
+    // Daily spend cap for chat in USD (see chat/daily-budget.ts); unset or empty means no budget.
+    DAILY_BUDGET_USD: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.coerce.number().positive().optional(),
+    ),
   })
   .superRefine((env, ctx) => {
     for (const [key, other] of [

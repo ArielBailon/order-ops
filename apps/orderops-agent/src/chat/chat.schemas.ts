@@ -27,6 +27,14 @@ export const chatRouteSchema = z.enum([
 
 export type ChatRoute = z.infer<typeof chatRouteSchema>;
 
+/**
+ * Routes a reply can carry: the router's intents plus `budget`, the fixed reply sent once the
+ * daily cost budget is used up. The router never returns `budget`.
+ */
+export const replyRouteSchema = z.enum([...chatRouteSchema.options, 'budget']);
+
+export type ReplyRoute = z.infer<typeof replyRouteSchema>;
+
 export const routedIntentSchema = z.object({
   intent: chatRouteSchema.describe('Which route should handle the message'),
 });
@@ -38,7 +46,7 @@ export interface RefundSummary {
 }
 
 export type FinalReply = FinalAnswer & {
-  route: ChatRoute;
+  route: ReplyRoute;
   refund?: RefundSummary;
 };
 
@@ -72,7 +80,7 @@ export type AgentEvent =
  */
 export interface TraceSummary {
   id: string;
-  route: ChatRoute | null;
+  route: ReplyRoute | null;
   tools: string[];
   /** Provider of the last completed model call, null when none completed. */
   provider: string | null;

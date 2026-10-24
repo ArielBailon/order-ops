@@ -439,6 +439,10 @@ Every chat request writes a `ChatTrace` with one `LlmCall` per model call
 (provider, model, tokens, cached tokens, latency, estimated cost). Only metadata
 is stored, never message text.
 
+Set `DAILY_BUDGET_USD` (for example `2.00`) to cap the estimated chat spend per UTC day: once
+today's traces reach it, every chat message gets a fixed "usage limit reached" reply (route
+`budget`) without calling a model, until midnight UTC. Leave it empty for no cap.
+
 ```bash
 npm run report:traces                       # last 7 days
 npm run report:traces -- --since 2026-10-01

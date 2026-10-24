@@ -25,6 +25,11 @@ import {
 } from '../memory/user-memory.store.js';
 import { ChatAgentError } from './chat.errors.js';
 import {
+  BUDGET_REPLY,
+  DAILY_BUDGET,
+  type DailyBudget,
+} from './daily-budget.js';
+import {
   type AgentEvent,
   CHAT_ERROR_MESSAGES,
   type ChatEvent,
@@ -68,6 +73,10 @@ export class ChatService {
     @Optional()
     @Inject(LANGFUSE)
     private readonly langfuse: LangfuseTracing | null = null,
+    // Null when DAILY_BUDGET_USD is unset: no spend query, no fixed reply.
+    @Optional()
+    @Inject(DAILY_BUDGET)
+    private readonly budget: DailyBudget | null = null,
   ) {
     this.graph = buildAgentGraph({
       cheap,
@@ -138,6 +147,11 @@ export class ChatService {
     { message, token, customerId, threadId }: ChatTurn,
     signal: AbortSignal,
   ): AsyncGenerator<ChatEvent> {
+    // Checked before the graph starts, so a used-up budget costs no model, orders or checkpoint call.
+    if (this.budget && (await this.budget.exceeded())) {
+      yield* this.budgetReply(customerId, threadId, signal);
+      return;
+    }
     const configurable: CallerConfig = {
       token,
       customerId,
@@ -194,12 +208,49 @@ export class ChatService {
       const trace = traceEvent(finish());
       if (trace) yield trace;
     } finally {
-      // Not awaited: a slow database must not hold the SSE stream open after `final`.
-      // Tracked so a shutdown can wait for it before the database is disconnected.
-      const write = this.recordTrace(finish());
-      this.pendingTraces.add(write);
-      void write.finally(() => this.pendingTraces.delete(write));
+      this.storeTrace(finish());
     }
+  }
+
+  /**
+   * The fixed reply once the daily budget is used up (route `budget`): a normal `final` and
+   * `trace`, and a stored trace with no calls. The thread is not touched.
+   */
+  private async *budgetReply(
+    customerId: string,
+    threadId: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<ChatEvent> {
+    const collector = new TraceCollector();
+    const startedAt = Date.now();
+    const final: ChatEvent = {
+      type: 'final',
+      data: { answer: BUDGET_REPLY, orderIds: [], route: 'budget', threadId },
+    };
+    collector.note(final);
+    let record: TraceRecord | undefined;
+    const finish = () =>
+      (record ??= collector.toRecord(
+        { customerId, threadId, startedAt },
+        signal.aborted,
+      ));
+    try {
+      yield final;
+      const trace = traceEvent(finish());
+      if (trace) yield trace;
+    } finally {
+      this.storeTrace(finish());
+    }
+  }
+
+  /**
+   * Not awaited: a slow database must not hold the SSE stream open after `final`.
+   * Tracked so a shutdown can wait for it before the database is disconnected.
+   */
+  private storeTrace(record: TraceRecord): void {
+    const write = this.recordTrace(record);
+    this.pendingTraces.add(write);
+    void write.finally(() => this.pendingTraces.delete(write));
   }
 
   /** Resolves once the trace writes started so far have settled (they never reject). */

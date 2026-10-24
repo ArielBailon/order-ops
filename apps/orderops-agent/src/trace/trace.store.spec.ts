@@ -27,8 +27,10 @@ const trace: TraceRecord = {
 
 describe('PrismaTraceStore', () => {
   const create = vi.fn();
+  const aggregate = vi.fn();
   const store = new PrismaTraceStore({
     chatTrace: { create },
+    llmCall: { aggregate },
   } as unknown as PrismaService);
 
   beforeEach(() => create.mockReset().mockResolvedValue({}));
@@ -82,5 +84,33 @@ describe('PrismaTraceStore', () => {
     } as unknown as PrismaService);
 
     await expect(failing.record(trace)).rejects.toThrow('db down');
+  });
+});
+
+describe('PrismaTraceStore.costSince', () => {
+  const aggregate = vi.fn();
+  const store = new PrismaTraceStore({
+    llmCall: { aggregate },
+  } as unknown as PrismaService);
+  const since = new Date('2026-10-23T00:00:00Z');
+
+  beforeEach(() => aggregate.mockReset());
+
+  it('sums the call costs of traces created since the given time', async () => {
+    aggregate.mockResolvedValue({
+      _sum: { costUsd: { toString: () => '1.234567' } },
+    });
+
+    expect(await store.costSince(since)).toBeCloseTo(1.234567, 6);
+    expect(aggregate).toHaveBeenCalledWith({
+      _sum: { costUsd: true },
+      where: { trace: { createdAt: { gte: since } } },
+    });
+  });
+
+  it('reports 0 when no priced call exists', async () => {
+    aggregate.mockResolvedValue({ _sum: { costUsd: null } });
+
+    expect(await store.costSince(since)).toBe(0);
   });
 });

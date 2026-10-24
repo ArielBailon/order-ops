@@ -1,7 +1,7 @@
 import type { NextRequest, NextResponse } from 'next/server';
 import { forwardJson, jsonError, UUID, VIEWER_FORBIDDEN } from '@/lib/server';
 
-const ROUTES = new Set(['faq', 'order', 'refund', 'out_of_scope']);
+const ROUTES = new Set(['faq', 'order', 'refund', 'out_of_scope', 'budget']);
 const STATUSES = new Set(['ok', 'error', 'aborted']);
 const ALLOWED = new Set(['route', 'status', 'before']);
 

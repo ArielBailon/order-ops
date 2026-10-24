@@ -78,3 +78,23 @@ describe('validateEnv Langfuse settings', () => {
     ).toThrow();
   });
 });
+
+describe('validateEnv daily budget', () => {
+  it.each([undefined, ''])('has no budget when the value is %j', (value) => {
+    expect(
+      validateEnv({ ...valid, DAILY_BUDGET_USD: value }).DAILY_BUDGET_USD,
+    ).toBeUndefined();
+  });
+
+  it('parses a positive USD amount', () => {
+    expect(
+      validateEnv({ ...valid, DAILY_BUDGET_USD: '2.00' }).DAILY_BUDGET_USD,
+    ).toBe(2);
+  });
+
+  it.each(['0', '-1', 'abc'])('rejects %s and names the variable', (value) => {
+    expect(() => validateEnv({ ...valid, DAILY_BUDGET_USD: value })).toThrow(
+      'DAILY_BUDGET_USD',
+    );
+  });
+});

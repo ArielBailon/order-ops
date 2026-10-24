@@ -107,6 +107,8 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://cloud.langfuse.com}
+      # Daily chat spend cap in USD; empty means no cap.
+      DAILY_BUDGET_USD: ${DAILY_BUDGET_USD:-}
       ORDERS_SERVICE_URL: http://orders-service:3001
       CUSTOMERS_SERVICE_URL: http://customers-service:3002
     healthcheck:

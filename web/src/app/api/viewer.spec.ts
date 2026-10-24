@@ -160,6 +160,12 @@ describe('GET /api/viewer/summary', () => {
 });
 
 describe('GET /api/viewer/traces', () => {
+  it('accepts the budget reply route as a filter', async () => {
+    await traces(get('/api/viewer/traces?route=budget'));
+
+    expect(upstreamUrl().searchParams.get('route')).toBe('budget');
+  });
+
   it('forwards only validated filters plus limit=50', async () => {
     await traces(
       get(`/api/viewer/traces?route=refund&status=ok&before=${TRACE}`),
