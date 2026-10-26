@@ -569,7 +569,7 @@ Both need no keys. With no committed results they print `No eval results found`
 and skip. The committed runs are in `evals/results/` (Anthropic so far).
 
 CI (`.github/workflows/evals.yml`): pull requests run the keyless deterministic
-checks. The live job runs on manual dispatch or weekly (Mondays 06:00 UTC) with
+checks. The live job runs on manual dispatch only (`gh workflow run evals.yml`) with
 the repository secrets `ANTHROPIC_API_KEY` (and `OPENAI_API_KEY` for OpenAI), a
 case cap and a cost cap, and uploads the results as the `eval-results` artifact.
 It never commits; download the artifact and commit the results by hand.

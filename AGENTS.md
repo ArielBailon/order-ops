@@ -495,7 +495,7 @@ until the global npm is updated.
   no keys
 - Eval CI (`.github/workflows/evals.yml`): pull requests run the `deterministic` job (eval
   specs + `eval:regress`, no secrets, no model calls). The `live` job runs on manual dispatch
-  or weekly (Mondays 06:00 UTC, defaults: anthropic, 41 cases, `max_cost` 2.00, no judge); it
+  only (`gh workflow run evals.yml`; defaults: anthropic, 41 cases, `max_cost` 2.00, no judge); it
   needs the repository secrets `ANTHROPIC_API_KEY` (and `OPENAI_API_KEY` for provider
   openai), runs the evals, `eval:compare` and `eval:regress`, and uploads `evals/results/`
   and `COMPARISON.md` as the `eval-results` artifact. It never commits: download the
